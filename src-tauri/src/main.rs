@@ -9,6 +9,8 @@
 //   principal, para no mantener un segundo webview en memoria.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod visibility;
+
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -20,16 +22,27 @@ use std::{
     time::Duration,
 };
 
-use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder, Window, WindowEvent};
+use tauri::{
+    AppHandle, Emitter, LogicalSize, Manager, WebviewUrl, WebviewWindowBuilder, Window, WindowEvent,
+};
+
+use visibility::Backend;
 
 const MAIN: &str = "main";
+/// Título de la ventana principal (tauri.conf.json). Sirve para encontrarla
+/// en la lista de ventanas del compositor.
+const MAIN_TITLE: &str = "Foco";
 const WIDGET: &str = "widget";
 /// Título fijo del widget: lo usan las reglas de Hyprland/Sway para fijarlo.
 const WIDGET_TITLE: &str = "Foco Widget";
+/// Tamaño del widget a escala 1. El usuario lo escala (Ajustes o Ctrl+rueda).
 const WIDGET_SIZE: (f64, f64) = (320.0, 84.0);
+const WIDGET_SCALE: (f64, f64) = (0.6, 1.4);
 /// Espera antes de mostrar el widget al perder el foco. Evita parpadeos con
 /// focus-follows-mouse o al abrir diálogos.
 const AUTO_DELAY: Duration = Duration::from_millis(650);
+/// Espera tras un evento del compositor (agrupa ráfagas de eventos).
+const EVENT_DELAY: Duration = Duration::from_millis(250);
 
 struct Store {
     path: PathBuf,
@@ -42,12 +55,28 @@ struct Store {
     focus_epoch: AtomicU64,
     /// Serializa crear/destruir el widget.
     widget_lock: Mutex<()>,
+    /// Escala del widget (ajuste `widgetScale`).
+    widget_scale: Mutex<f64>,
+    /// Cómo averiguar si la ventana principal sigue visible.
+    backend: Backend,
 }
 
 fn auto_widget_flag(v: &serde_json::Value) -> bool {
     v.pointer("/settings/autoWidget")
         .and_then(|b| b.as_bool())
         .unwrap_or(true)
+}
+
+fn widget_scale_of(v: &serde_json::Value) -> f64 {
+    let s = v
+        .pointer("/settings/widgetScale")
+        .and_then(|n| n.as_f64())
+        .unwrap_or(1.0);
+    if s.is_finite() {
+        s.clamp(WIDGET_SCALE.0, WIDGET_SCALE.1)
+    } else {
+        1.0
+    }
 }
 
 /// Escritura atómica: nunca deja el archivo a medias si se corta la luz.
@@ -68,6 +97,16 @@ fn get_state(store: tauri::State<'_, Store>) -> String {
 fn set_state(app: AppHandle, store: tauri::State<'_, Store>, state: String) -> Result<(), String> {
     let v: serde_json::Value = serde_json::from_str(&state).map_err(|e| e.to_string())?;
     store.auto_widget.store(auto_widget_flag(&v), Relaxed);
+    let scale = widget_scale_of(&v);
+    let changed = {
+        let mut cur = store.widget_scale.lock().unwrap();
+        let changed = (*cur - scale).abs() > f64::EPSILON;
+        *cur = scale;
+        changed
+    };
+    if changed {
+        apply_widget_scale(&app, scale);
+    }
     {
         let mut cur = store.json.lock().unwrap();
         write_atomic(&store.path, &state).map_err(|e| e.to_string())?;
@@ -85,6 +124,18 @@ async fn show_widget(app: AppHandle) {
 #[tauri::command]
 async fn show_main(app: AppHandle) {
     enter_main(&app);
+}
+
+/// Cambia el tamaño del widget al momento (Ctrl+rueda sobre él). El widget
+/// también lo llama al cargar, para asegurar el zoom tras crear el webview.
+#[tauri::command]
+fn set_widget_scale(app: AppHandle, store: tauri::State<'_, Store>, scale: f64) {
+    if !scale.is_finite() {
+        return;
+    }
+    let scale = scale.clamp(WIDGET_SCALE.0, WIDGET_SCALE.1);
+    *store.widget_scale.lock().unwrap() = scale;
+    apply_widget_scale(&app, scale);
 }
 
 #[tauri::command]
@@ -111,10 +162,15 @@ fn enter_widget(app: &AppHandle, hide_main: bool) {
         let _ = w.show();
         return;
     }
+    let scale = *store.widget_scale.lock().unwrap();
+    let (w, h) = (WIDGET_SIZE.0 * scale, WIDGET_SIZE.1 * scale);
+    // Tamaño fijo mediante mínimo = máximo. Con `.resizable(false)` GTK impone
+    // un alto mínimo de 200 px e ignora el tamaño pedido.
     let built = WebviewWindowBuilder::new(app, WIDGET, WebviewUrl::App("widget.html".into()))
         .title(WIDGET_TITLE)
-        .inner_size(WIDGET_SIZE.0, WIDGET_SIZE.1)
-        .resizable(false)
+        .inner_size(w, h)
+        .min_inner_size(w, h)
+        .max_inner_size(w, h)
         .decorations(false)
         .transparent(true)
         .always_on_top(true) // X11/XWayland. En Hyprland/Sway lo hace la regla `pin`/`sticky`.
@@ -122,9 +178,28 @@ fn enter_widget(app: &AppHandle, hide_main: bool) {
         .skip_taskbar(true)
         .focused(false)
         .build();
-    if let Err(e) = built {
-        eprintln!("foco: no se pudo crear el widget: {e}");
+    match built {
+        Ok(w) => {
+            let _ = w.set_zoom(scale);
+        }
+        Err(e) => eprintln!("foco: no se pudo crear el widget: {e}"),
     }
+}
+
+/// Escala el widget: la ventana cambia de tamaño y el contenido se amplía o
+/// reduce con el zoom del webview, así el diseño (320×84) es siempre el mismo.
+fn apply_widget_scale(app: &AppHandle, scale: f64) {
+    let Some(w) = app.get_webview_window(WIDGET) else {
+        return;
+    };
+    let size = LogicalSize::new(WIDGET_SIZE.0 * scale, WIDGET_SIZE.1 * scale);
+    // Se quitan los límites, se cambia el tamaño y se vuelven a fijar.
+    let _ = w.set_min_size(None::<LogicalSize<f64>>);
+    let _ = w.set_max_size(None::<LogicalSize<f64>>);
+    let _ = w.set_size(size);
+    let _ = w.set_min_size(Some(size));
+    let _ = w.set_max_size(Some(size));
+    let _ = w.set_zoom(scale);
 }
 
 /// Destruye el widget (libera su webview). Se usa al volver a la app a propósito.
@@ -156,6 +231,44 @@ fn enter_main(app: &AppHandle) {
         let _ = main.set_focus();
     }
     close_widget(app);
+}
+
+/// Programa `auto_check` tras `delay`. Cualquier cambio de foco posterior
+/// (o otra llamada) lo cancela.
+fn schedule_check(app: &AppHandle, delay: Duration) {
+    let store = app.state::<Store>();
+    if !store.auto_widget.load(Relaxed) || store.pinned.load(Relaxed) {
+        return;
+    }
+    let epoch = store.focus_epoch.fetch_add(1, Relaxed) + 1;
+    let app = app.clone();
+    thread::spawn(move || {
+        thread::sleep(delay);
+        if app.state::<Store>().focus_epoch.load(Relaxed) == epoch {
+            auto_check(&app);
+        }
+    });
+}
+
+/// Modo automático: con la ventana principal abierta pero sin foco, muestra
+/// el widget solo si Foco ya no se ve (p. ej. no se muestra si sigue a la
+/// vista en el otro monitor) y lo oculta si vuelve a verse.
+fn auto_check(app: &AppHandle) {
+    let store = app.state::<Store>();
+    if !store.auto_widget.load(Relaxed) || store.pinned.load(Relaxed) {
+        return;
+    }
+    let Some(main) = app.get_webview_window(MAIN) else {
+        return;
+    };
+    if main.is_focused().unwrap_or(false) || !main.is_visible().unwrap_or(false) {
+        return;
+    }
+    if visibility::main_visible(app, store.backend, MAIN, MAIN_TITLE) == Some(true) {
+        hide_widget(app);
+    } else {
+        enter_widget(app, false);
+    }
 }
 
 /// `foco --toggle` (pensado para un atajo de Hyprland/Sway).
@@ -207,21 +320,8 @@ fn on_window_event(window: &Window, event: &WindowEvent) {
             }
         }
         WindowEvent::Focused(false) => {
-            let epoch = store.focus_epoch.fetch_add(1, Relaxed) + 1;
-            if !store.auto_widget.load(Relaxed) {
-                return;
-            }
-            thread::spawn(move || {
-                thread::sleep(AUTO_DELAY);
-                let store = app.state::<Store>();
-                let main_focused = app
-                    .get_webview_window(MAIN)
-                    .and_then(|m| m.is_focused().ok())
-                    .unwrap_or(false);
-                if store.focus_epoch.load(Relaxed) == epoch && !main_focused {
-                    enter_widget(&app, false);
-                }
-            });
+            store.focus_epoch.fetch_add(1, Relaxed);
+            schedule_check(&app, AUTO_DELAY);
         }
         // Minimizar nativo (X11, KDE, GNOME…). Hyprland no minimiza.
         WindowEvent::Resized(_) => {
@@ -255,9 +355,10 @@ fn main() {
             fs::create_dir_all(&dir)?;
             let path = dir.join("state.json");
             let mut json = fs::read_to_string(&path).unwrap_or_default();
-            let mut auto = true;
+            let (mut auto, mut scale) = (true, 1.0);
             if let Ok(mut v) = serde_json::from_str::<serde_json::Value>(&json) {
                 auto = auto_widget_flag(&v);
+                scale = widget_scale_of(&v);
                 // Si se apagó el equipo con el cronómetro en marcha, no sumar
                 // todo ese tiempo: se pausa al arrancar. El frontend guarda un
                 // punto de control cada pocos minutos, así se pierde poco.
@@ -275,6 +376,15 @@ fn main() {
                 pinned: AtomicBool::new(false),
                 focus_epoch: AtomicU64::new(0),
                 widget_lock: Mutex::new(()),
+                widget_scale: Mutex::new(scale),
+                backend: visibility::backend(),
+            });
+
+            // Eventos del compositor (Hyprland/Sway): cambiar de escritorio en
+            // otro monitor puede tapar o destapar Foco sin cambiar su foco.
+            let handle = app.handle().clone();
+            visibility::watch(app.state::<Store>().backend, move || {
+                schedule_check(&handle, EVENT_DELAY)
             });
 
             if std::env::args().any(|a| a == "--widget") {
@@ -292,6 +402,7 @@ fn main() {
             set_state,
             show_widget,
             show_main,
+            set_widget_scale,
             quit
         ])
         .run(tauri::generate_context!())

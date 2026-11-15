@@ -10,8 +10,8 @@ hl.window_rule({
   match            = { title = "^Foco Widget$" },
   float            = true,
   pin              = true,
-  size             = { 320, 84 },
-  move             = { "monitor_w - 340", "56" },
+  -- Sin regla de tamaño: Foco lo fija según el ajuste "Tamaño del widget".
+  move             = { "monitor_w - window_w - 20", "56" },
   no_initial_focus = true,
   no_dim           = true,
   no_follow_mouse  = true,

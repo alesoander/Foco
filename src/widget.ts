@@ -6,6 +6,7 @@ import * as S from "./store";
 import { applyAppearance, color, esc, icon, syncTicker } from "./ui";
 
 const root = document.getElementById("app")!;
+let appliedScale = 0;
 
 /** Tarea en foco o, si no hay, la siguiente pendiente para empezar con un clic. */
 function candidate(s: S.State): S.Task | null {
@@ -18,6 +19,10 @@ function candidate(s: S.State): S.Task | null {
 function render(): void {
   const s = S.get();
   applyAppearance(s);
+  if (s.settings.widgetScale !== appliedScale) {
+    appliedScale = s.settings.widgetScale;
+    B.setWidgetScale(appliedScale);
+  }
   const active = S.activeTask(s);
   const t = candidate(s);
   const list = t ? s.lists.find((l) => l.id === t.listId) : undefined;
@@ -85,6 +90,29 @@ root.addEventListener("mousedown", (e) => {
 root.addEventListener("dblclick", (e) => {
   if (!(e.target as HTMLElement).closest("button")) B.showMain();
 });
+
+// Ctrl + rueda: cambia el tamaño del widget (se guarda en Ajustes).
+// Un paso por movimiento de rueda (cada motor web da un `deltaY` distinto:
+// WebKitGTK ≈ 14 px, Chromium 100 px); el límite de frecuencia evita que el
+// flujo continuo de un touchpad lo dispare.
+let lastWheel = 0;
+root.addEventListener(
+  "wheel",
+  (e) => {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    if (!e.deltaY || e.timeStamp - lastWheel < 90) return;
+    lastWheel = e.timeStamp;
+    const step = e.deltaY < 0 ? S.WIDGET_SCALE.step : -S.WIDGET_SCALE.step;
+    const cur = S.get().settings.widgetScale;
+    const next = S.clampScale(cur + step);
+    if (next === cur) return;
+    appliedScale = next;
+    B.setWidgetScale(next);
+    void S.update((s) => void (s.settings.widgetScale = next), { render: false, debounce: true });
+  },
+  { passive: false },
+);
 
 S.subscribe(render);
 void S.init().then(render);
