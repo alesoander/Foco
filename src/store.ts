@@ -5,6 +5,8 @@ export type Task = {
   id: string;
   listId: string;
   title: string;
+  /** Código interno opcional (p. ej. "PRJ-142"). */
+  code: string;
   notes: string;
   done: boolean;
   createdAt: number;
@@ -20,7 +22,15 @@ export type Settings = {
   autoWidget: boolean;
   glass: number;
   theme: "system" | "light" | "dark";
+  /** Escala del widget: 1 = 320×84. */
+  widgetScale: number;
 };
+
+export const WIDGET_SCALE = { min: 0.6, max: 1.4, step: 0.05 };
+export const clampScale = (v: number) =>
+  Number.isFinite(v)
+    ? Math.min(WIDGET_SCALE.max, Math.max(WIDGET_SCALE.min, +(Math.round(v / WIDGET_SCALE.step) * WIDGET_SCALE.step).toFixed(2)))
+    : 1;
 
 export type State = {
   v: 1;
@@ -39,7 +49,7 @@ export const COLORS = ["#0a84ff", "#ff9f0a", "#30d158", "#bf5af2", "#ff375f", "#
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
 function task(listId: string, title: string, order: number): Task {
-  return { id: uid(), listId, title, notes: "", done: false, createdAt: Date.now(), doneAt: null, spentMs: 0, order };
+  return { id: uid(), listId, title, code: "", notes: "", done: false, createdAt: Date.now(), doneAt: null, spentMs: 0, order };
 }
 
 export function defaults(): State {
@@ -55,7 +65,7 @@ export function defaults(): State {
     ],
     selectedListId: id,
     active: { taskId: null, since: null },
-    settings: { autoWidget: true, glass: 0.72, theme: "system" },
+    settings: { autoWidget: true, glass: 0.72, theme: "system", widgetScale: 1 },
   };
 }
 
@@ -64,14 +74,17 @@ export function normalize(raw: unknown): State {
   if (!raw || typeof raw !== "object") return d;
   const r = raw as Partial<State>;
   if (!Array.isArray(r.lists) || !Array.isArray(r.tasks)) return d;
+  const settings = { ...d.settings, ...(r.settings ?? {}) };
+  settings.widgetScale = clampScale(Number(settings.widgetScale));
   return {
     v: 1,
     rev: Number(r.rev) || 0,
     lists: r.lists,
-    tasks: r.tasks,
+    // Las tareas creadas antes de existir el código no lo tienen.
+    tasks: r.tasks.map((t) => ({ ...t, code: typeof t.code === "string" ? t.code : "" })),
     selectedListId: r.selectedListId ?? r.lists[0]?.id ?? null,
     active: { taskId: r.active?.taskId ?? null, since: r.active?.since ?? null },
-    settings: { ...d.settings, ...(r.settings ?? {}) },
+    settings,
   };
 }
 

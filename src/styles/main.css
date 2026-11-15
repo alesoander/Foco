@@ -441,6 +441,54 @@ html.web .window {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.code-chip {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--fill-2);
+  font: 600 11px/16px ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", monospace;
+  color: var(--text-2);
+  vertical-align: 1px;
+}
+.task-code {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 0 10px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: inset 0 0 0 0.5px var(--hair);
+  cursor: text;
+}
+.task-code:focus-within {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+.task-code span {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-3);
+}
+.task-code input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  outline: none;
+  font: 500 12.5px ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", monospace;
+  color: var(--text);
+}
+.task-code input::placeholder {
+  font-family: var(--font);
+  font-weight: 400;
+  color: var(--text-3);
+}
 .task-notes {
   display: block;
   width: 100%;
@@ -565,6 +613,16 @@ html.web .window {
   margin-top: 2px;
   font-size: 12px;
   color: var(--text-2);
+}
+.set-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.set-value {
+  font-size: 12px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
 }
 .set-desc code {
   font-size: 11.5px;

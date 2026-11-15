@@ -39,6 +39,12 @@ export function showWidget(): void {
   else window.open("widget.html", "foco-widget", "width=320,height=84");
 }
 
+/** Redimensiona el widget al momento. En el navegador solo aplica zoom. */
+export function setWidgetScale(scale: number): void {
+  if (isTauri) void invoke("set_widget_scale", { scale });
+  else document.documentElement.style.setProperty("zoom", String(scale));
+}
+
 export function showMain(): void {
   if (isTauri) void invoke("show_main");
   else window.opener?.focus();

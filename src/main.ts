@@ -85,15 +85,19 @@ function row(s: S.State, t: S.Task): string {
       <input class="task-title" data-key="title:${t.id}" data-id="${t.id}" value="${esc(t.title)}" placeholder="Sin título" spellcheck="false">
       ${
         open
-          ? `<textarea class="task-notes" data-key="notes:${t.id}" data-id="${t.id}" placeholder="Añadir notas" rows="3">${esc(t.notes)}</textarea>`
-          : preview
-            ? `<div class="task-preview">${esc(preview)}</div>`
+          ? `<label class="task-code">
+               <span>Código</span>
+               <input data-key="code:${t.id}" data-id="${t.id}" value="${esc(t.code)}" placeholder="Código interno (p. ej. PRJ-142)" spellcheck="false" autocomplete="off" maxlength="40">
+             </label>
+             <textarea class="task-notes" data-key="notes:${t.id}" data-id="${t.id}" placeholder="Añadir notas" rows="3">${esc(t.notes)}</textarea>`
+          : preview || t.code
+            ? `<div class="task-preview">${t.code ? `<span class="code-chip">${esc(t.code)}</span>` : ""}${esc(preview)}</div>`
             : ""
       }
     </div>
     <span class="task-time"${active ? " data-timer" : ""}>${ms >= 1000 ? S.fmt(ms) : ""}</span>
     <div class="task-tools">
-      <button class="icon-btn${open || t.notes ? " on" : ""}" data-act="notes" data-id="${t.id}" title="Notas">${icon("notes", 15)}</button>
+      <button class="icon-btn${open || t.notes || t.code ? " on" : ""}" data-act="notes" data-id="${t.id}" title="Código y notas">${icon("notes", 15)}</button>
       ${t.done ? "" : `<button class="icon-btn${active ? " on" : ""}" data-act="focus" data-id="${t.id}" title="Poner en foco">${icon("target", 15)}</button>`}
       <button class="icon-btn del${del ? " confirm" : ""}" data-act="del-task" data-id="${t.id}" title="Eliminar">${del ? "Eliminar" : icon("trash", 15)}</button>
     </div>
@@ -133,6 +137,8 @@ function content(s: S.State): string {
   </main>`;
 }
 
+const scaleLabel = (v: number) => `${Math.round(v * 100)} % · ${Math.round(320 * v)}×${Math.round(84 * v)}`;
+
 function settings(s: S.State): string {
   const st = s.settings;
   const seg = (v: S.Settings["theme"], label: string) =>
@@ -141,8 +147,13 @@ function settings(s: S.State): string {
     <div class="sheet glass" role="dialog" aria-label="Ajustes">
       <h2>Ajustes</h2>
       <div class="set-row">
-        <div><div class="set-title">Widget automático</div><div class="set-desc">Aparece al cambiar de ventana o de escritorio, como el PiP de Meet.</div></div>
+        <div><div class="set-title">Widget automático</div><div class="set-desc">Aparece al cambiar de ventana o de escritorio, como el PiP de Meet. No aparece mientras Foco siga a la vista, por ejemplo en otro monitor.</div></div>
         <button class="switch${st.autoWidget ? " on" : ""}" data-act="set-auto" role="switch" aria-checked="${st.autoWidget}"><span></span></button>
+      </div>
+      <div class="set-row col">
+        <div class="set-head"><span class="set-title">Tamaño del widget</span><span class="set-value" data-scale-label>${scaleLabel(st.widgetScale)}</span></div>
+        <input class="slider" type="range" data-key="widget-scale" min="${S.WIDGET_SCALE.min}" max="${S.WIDGET_SCALE.max}" step="${S.WIDGET_SCALE.step}" value="${st.widgetScale}">
+        <div class="set-desc">También con <kbd>Ctrl</kbd> + rueda del ratón sobre el widget.</div>
       </div>
       <div class="set-row">
         <div class="set-title">Apariencia</div>
@@ -252,7 +263,7 @@ root.addEventListener("click", (e) => {
   if (!el) {
     // Clic en el cuerpo de una tarea (no en el texto): abre/cierra notas
     const task = target.closest<HTMLElement>(".task");
-    if (task && !target.closest("input, textarea")) {
+    if (task && !target.closest("input, textarea, .task-code")) {
       expanded = expanded === task.dataset.id ? null : task.dataset.id!;
       render();
     }
@@ -343,7 +354,7 @@ root.addEventListener("input", (e) => {
   const el = e.target as HTMLInputElement;
   const key = el.dataset.key ?? "";
   const id = el.dataset.id ?? "";
-  const setField = (field: "title" | "notes") =>
+  const setField = (field: "title" | "code" | "notes") =>
     void S.update(
       (s) => {
         const t = S.findTask(s, id);
@@ -357,11 +368,18 @@ root.addEventListener("input", (e) => {
       const fc = root.querySelector(".fc-title");
       if (fc) fc.textContent = el.value || "Sin título";
     }
+  } else if (key.startsWith("code:")) {
+    setField("code");
   } else if (key.startsWith("notes:")) {
     setField("notes");
   } else if (key === "glass") {
     void S.update((s) => void (s.settings.glass = Number(el.value)), { render: false, debounce: true });
     applyAppearance(S.get());
+  } else if (key === "widget-scale") {
+    const v = S.clampScale(Number(el.value));
+    void S.update((s) => void (s.settings.widgetScale = v), { render: false, debounce: true });
+    const label = root.querySelector("[data-scale-label]");
+    if (label) label.textContent = scaleLabel(v);
   }
 });
 
@@ -375,7 +393,10 @@ root.addEventListener("keydown", (e) => {
     if (!title || !listId) return;
     el.value = "";
     void S.update((s) => S.addTask(s, listId, title));
-  } else if (key.startsWith("title:") && (e.key === "Enter" || e.key === "Escape")) {
+  } else if (key.startsWith("code:") && e.key === "Enter") {
+    e.preventDefault();
+    focusKey(`notes:${key.slice(5)}`);
+  } else if ((key.startsWith("title:") || key.startsWith("code:")) && (e.key === "Enter" || e.key === "Escape")) {
     e.preventDefault();
     e.stopPropagation();
     el.blur();
@@ -402,7 +423,7 @@ root.addEventListener("focusout", (e) => {
       const l = s.lists.find((x) => x.id === id);
       if (l) l.name = el.value.trim() || "Sin título";
     });
-  } else if (key.startsWith("title:") || key.startsWith("notes:")) {
+  } else if (key.startsWith("title:") || key.startsWith("code:") || key.startsWith("notes:")) {
     void S.flush();
   }
 });

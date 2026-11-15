@@ -2,13 +2,20 @@
 
 Organizador de tareas para escritorio Linux (pensado para **Arch + Hyprland/Sway**) con un **widget flotante siempre visible** que muestra la tarea en la que estás trabajando, al estilo del picture‑in‑picture de Google Meet. Interfaz de vidrio esmerilado inspirada en macOS.
 
-- **Listas y tareas**: crear, renombrar y colorear listas; tareas con notas; completadas plegables.
+- **Listas y tareas**: crear, renombrar y colorear listas; tareas con código interno y notas; completadas plegables.
+- **Código interno**: cada tarea puede llevar un código propio (p. ej. `PRJ-142`). Se edita al abrir las notas de la tarea y se ve como etiqueta junto a la vista previa.
 - **Tarea en foco**: pulsa ◎ en una tarea y empieza el cronómetro. El tiempo se acumula por tarea.
-- **Widget flotante (320×84)**: muestra la tarea y el tiempo, y se puede arrastrar. Al pasar el ratón aparecen los botones *completar*, *siguiente* y *abrir*. Con doble clic vuelves a la app.
+- **Widget flotante (320×84 al 100 %)**: muestra la tarea y el tiempo, y se puede arrastrar. Al pasar el ratón aparecen los botones *completar*, *siguiente* y *abrir*. Con doble clic vuelves a la app.
+- **Tamaño del widget**: de 60 % (192×50) a 140 % (448×118), en *Ajustes → Tamaño del widget* o con `Ctrl` + rueda del ratón sobre el widget. Se guarda y se mantiene al reiniciar.
 - **Cuándo aparece el widget**:
   - con el botón amarillo, el rojo o `Ctrl+M`;
   - con `foco --toggle` desde un atajo del compositor;
   - automáticamente al cambiar de ventana o de escritorio (se puede desactivar en Ajustes).
+- **Varios monitores**: el modo automático **no** muestra el widget mientras la ventana de Foco siga a la vista, por ejemplo en el otro monitor mientras trabajas en este. Si después cambias de escritorio en el monitor de Foco, o una ventana a pantalla completa lo tapa, el widget aparece; si Foco vuelve a verse, se oculta. Cómo lo detecta:
+  - **Hyprland**: pregunta al compositor por su socket de IPC y escucha sus eventos (sin lanzar procesos ni sondear).
+  - **Sway**: mediante `swaymsg` (`get_tree` y `subscribe`).
+  - **X11 y Windows**: si el puntero está en un monitor distinto del de Foco al perder el foco, se da por hecho que Foco sigue visible.
+  - **GNOME/KDE en Wayland**: no hay forma de saberlo; el widget aparece como antes.
 
 ## Por qué consume poco
 
@@ -59,12 +66,15 @@ En Wayland una aplicación **no puede** ponerse "siempre encima" ni elegir su po
 
 - **Hyprland con configuración Lua** (versiones actuales) usa [`packaging/compositor/hyprland.lua`](packaging/compositor/hyprland.lua):
   - `float` + `pin` dejan el widget encima de todo y visible en todos los escritorios;
+  - no fija el tamaño: lo pone Foco según tu ajuste;
   - `no_initial_focus` evita que te robe el foco;
   - incluye además el atajo `Super+T` y el arranque automático como widget.
 - **Hyprland con el formato `.conf` antiguo** usa [`packaging/compositor/hyprland.conf`](packaging/compositor/hyprland.conf), con `windowrulev2`. Mira cuál usa tu versión con `hyprctl version`.
 - **Sway** usa [`packaging/compositor/sway.conf`](packaging/compositor/sway.conf). Ahí `sticky` cumple la función de `pin`. Sway no tiene blur (SwayFX sí); sube la *Opacidad del vidrio* en Ajustes.
 
 Para el vidrio esmerilado hace falta el blur del compositor. En Hyprland viene activado por defecto (`decoration.blur.enabled`). Sin blur la interfaz sigue viéndose bien: solo es más translúcida.
+
+> **Si ya copiaste las reglas antes**: quita la regla de tamaño del widget (`size = { 320, 84 }`, `windowrulev2 = size 320 84, …` o `resize set 320 84` en Sway). Si no, el compositor impondría siempre 320×84 y el ajuste de tamaño no tendría efecto.
 
 > La sintaxis Lua se tomó de la wiki de Hyprland (rama en desarrollo, noviembre 2026), pero no la he probado en un Hyprland real. Si algo no encaja, comprueba el título de las ventanas con `hyprctl clients`.
 
@@ -74,7 +84,8 @@ Para el vidrio esmerilado hace falta el blur del compositor. En Hyprland viene a
 |---|---|
 | Nueva tarea | `Ctrl+N`, o escribe en "Nueva tarea" y pulsa Enter |
 | Poner en foco / iniciar / pausar | ◎ en la tarea · `Espacio` |
-| Notas | Clic en la fila o en el icono de notas |
+| Notas y código interno | Clic en la fila o en el icono de notas. `Enter` en el código pasa a las notas |
+| Tamaño del widget | `Ctrl` + rueda sobre el widget · *Ajustes → Tamaño del widget* |
 | Renombrar lista | Doble clic en su nombre · clic en el icono para cambiar el color |
 | Eliminar | Papelera y luego "Eliminar" (dos clics) |
 | Minimizar a widget | Botón amarillo o rojo · `Ctrl+M` · botón "Widget" |
@@ -97,7 +108,10 @@ Los datos se guardan en `~/.local/share/io.github.foco/state.json`.
   - el estado se guarda a través de Rust, lo que confirma que funcionan la comunicación con el frontend, los permisos y la política de seguridad (CSP);
   - `--toggle` alterna entre ventana y widget, y el widget queda siempre encima;
   - hay una sola instancia.
-- **Sin probar en Linux**: WebKitGTK, la transparencia, el arrastre de ventanas, las reglas de Hyprland/Sway y el PKGBUILD. La primera prueba real es `npm run tauri dev` en Arch.
+- **Probado en Linux (X11 virtual, WebKitGTK 2.x)**:
+  - el tamaño del widget: se crea con el tamaño guardado, `Ctrl` + rueda lo cambia paso a paso y el contenido escala proporcionalmente;
+  - la detección con Hyprland, contra un servidor que imita su IPC: no aparece si Foco sigue visible; aparece al cambiar de escritorio o con una ventana a pantalla completa encima; se oculta al volver a verse Foco.
+- **Sin probar**: Hyprland y Sway reales, la detección X11 con dos monitores reales (el servidor X virtual solo ofrece uno), la transparencia, el arrastre de ventanas y el PKGBUILD.
 - **Cronómetro**: si apagas el equipo con el cronómetro en marcha, al arrancar se pausa. Se pierden como mucho los últimos 5 minutos, porque se guarda un punto de control cada 5 minutos.
 
 ## Problemas conocidos
@@ -118,6 +132,7 @@ src/                    Interfaz (TypeScript + CSS, sin framework)
   styles/               base.css (tokens claro/oscuro), main.css, widget.css
 src-tauri/
   src/main.rs           Estado, ventanas, widget, instancia única
+  src/visibility.rs     ¿Sigue Foco a la vista? (Hyprland, Sway, X11/Windows)
   tauri.conf.json       Ventana principal transparente y sin decoraciones
   capabilities/         Permisos de las dos ventanas
 packaging/
