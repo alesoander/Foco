@@ -1,0 +1,152 @@
+/* ── Tokens (estilo Apple, claro/oscuro) ───────────────────────── */
+:root {
+  color-scheme: light;
+  --accent: #007aff;
+  --red: #ff3b30;
+  --green: #34c759;
+  --text: rgba(0, 0, 0, 0.86);
+  --text-2: rgba(60, 60, 67, 0.7);
+  --text-3: rgba(60, 60, 67, 0.42);
+  --hair: rgba(0, 0, 0, 0.08);
+  --fill: rgba(0, 0, 0, 0.045);
+  --fill-2: rgba(0, 0, 0, 0.085);
+  /* Vidrio: el compositor (Hyprland/KWin) desenfoca lo que hay detrás */
+  --glass-rgb: 246, 246, 248;
+  --side-rgb: 232, 232, 237;
+  --glass-a: 0.72;
+  --card: rgba(255, 255, 255, 0.6);
+  --card-edge: rgba(255, 255, 255, 0.75);
+  --highlight: rgba(255, 255, 255, 0.55);
+  --shadow: 0 1px 1px rgba(0, 0, 0, 0.04), 0 6px 20px rgba(0, 0, 0, 0.07);
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Inter Variable", "Cantarell", system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --accent: #0a84ff;
+    --red: #ff453a;
+    --green: #30d158;
+    --text: rgba(255, 255, 255, 0.92);
+    --text-2: rgba(235, 235, 245, 0.62);
+    --text-3: rgba(235, 235, 245, 0.32);
+    --hair: rgba(255, 255, 255, 0.08);
+    --fill: rgba(255, 255, 255, 0.06);
+    --fill-2: rgba(255, 255, 255, 0.11);
+    --glass-rgb: 28, 28, 31;
+    --side-rgb: 40, 40, 44;
+    --card: rgba(255, 255, 255, 0.06);
+    --card-edge: rgba(255, 255, 255, 0.1);
+    --highlight: rgba(255, 255, 255, 0.08);
+    --shadow: 0 1px 1px rgba(0, 0, 0, 0.2), 0 8px 24px rgba(0, 0, 0, 0.25);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --accent: #0a84ff;
+  --red: #ff453a;
+  --green: #30d158;
+  --text: rgba(255, 255, 255, 0.92);
+  --text-2: rgba(235, 235, 245, 0.62);
+  --text-3: rgba(235, 235, 245, 0.32);
+  --hair: rgba(255, 255, 255, 0.08);
+  --fill: rgba(255, 255, 255, 0.06);
+  --fill-2: rgba(255, 255, 255, 0.11);
+  --glass-rgb: 28, 28, 31;
+  --side-rgb: 40, 40, 44;
+  --card: rgba(255, 255, 255, 0.06);
+  --card-edge: rgba(255, 255, 255, 0.1);
+  --highlight: rgba(255, 255, 255, 0.08);
+  --shadow: 0 1px 1px rgba(0, 0, 0, 0.2), 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+/* ── Base ───────────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  /* Ventana transparente: el fondo lo pinta cada superficie de vidrio */
+  background: transparent;
+}
+body {
+  font: 13px/1.38 var(--font);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+}
+#app {
+  height: 100%;
+}
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: default;
+}
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+  -webkit-user-select: text;
+  user-select: text;
+}
+:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 1px;
+}
+.i {
+  flex: none;
+  display: block;
+}
+::selection {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* Scrollbar fina estilo macOS */
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--fill-2);
+  border-radius: 10px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Vista previa en navegador: simula fondo de escritorio + desenfoque del compositor */
+html.web body {
+  background: radial-gradient(circle at 15% 20%, #7aa7ff 0, transparent 45%),
+    radial-gradient(circle at 85% 30%, #ff8fc8 0, transparent 40%),
+    radial-gradient(circle at 50% 90%, #8affd1 0, transparent 45%), #c9c6e8;
+}
+@media (prefers-color-scheme: dark) {
+  html.web:not([data-theme="light"]) body {
+    background: radial-gradient(circle at 15% 20%, #2a3f8f 0, transparent 45%),
+      radial-gradient(circle at 85% 30%, #7a2a5c 0, transparent 40%),
+      radial-gradient(circle at 50% 90%, #1d6b55 0, transparent 45%), #15141c;
+  }
+}
+html.web[data-theme="dark"] body {
+  background: radial-gradient(circle at 15% 20%, #2a3f8f 0, transparent 45%),
+    radial-gradient(circle at 85% 30%, #7a2a5c 0, transparent 40%),
+    radial-gradient(circle at 50% 90%, #1d6b55 0, transparent 45%), #15141c;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}

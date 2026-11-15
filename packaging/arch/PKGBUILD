@@ -1,0 +1,29 @@
+# Compila Foco desde este repositorio:  cd packaging/arch && makepkg -si
+pkgname=foco
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Organizador de tareas con widget flotante (Tauri + WebKitGTK)"
+arch=('x86_64' 'aarch64')
+license=('MIT')
+depends=('webkit2gtk-4.1' 'gtk3' 'glib2' 'cairo' 'pango' 'gdk-pixbuf2' 'libsoup3' 'dbus')
+makedepends=('cargo' 'npm')
+optdepends=('inter-font: tipografía más parecida a la de Apple')
+options=('!lto' '!debug')
+
+_root="$startdir/../.."
+
+build() {
+  cd "$_root"
+  npm ci
+  npm run tauri build -- --no-bundle
+}
+
+package() {
+  cd "$_root"
+  install -Dm755 src-tauri/target/release/foco "$pkgdir/usr/bin/foco"
+  install -Dm644 packaging/arch/foco.desktop "$pkgdir/usr/share/applications/foco.desktop"
+  install -Dm644 src-tauri/icons/32x32.png "$pkgdir/usr/share/icons/hicolor/32x32/apps/foco.png"
+  install -Dm644 src-tauri/icons/128x128.png "$pkgdir/usr/share/icons/hicolor/128x128/apps/foco.png"
+  install -Dm644 src-tauri/icons/128x128@2x.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/foco.png"
+  install -Dm644 src-tauri/icons/icon.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/foco.png"
+}

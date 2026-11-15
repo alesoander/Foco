@@ -1,0 +1,19 @@
+[Desktop Entry]
+Type=Application
+Name=Foco
+GenericName=Organizador de tareas
+Comment=Tareas con widget flotante siempre visible
+Exec=foco
+Icon=foco
+Terminal=false
+Categories=Office;ProjectManagement;Utility;
+Keywords=tareas;todo;foco;pomodoro;
+Actions=toggle;widget;
+
+[Desktop Action toggle]
+Name=Alternar ventana / widget
+Exec=foco --toggle
+
+[Desktop Action widget]
+Name=Abrir como widget
+Exec=foco --widget
