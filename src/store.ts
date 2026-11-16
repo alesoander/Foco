@@ -7,7 +7,10 @@ export type Task = {
   title: string;
   /** Código interno opcional (p. ej. "PRJ-142"). */
   code: string;
+  /** Notas comunes del usuario. Responden a las notas internas. */
   notes: string;
+  /** Notas internas (las añade Claude por MCP). Apartado propio en la tarea. */
+  internalNotes: InternalNote[];
   done: boolean;
   createdAt: number;
   doneAt: number | null;
@@ -15,6 +18,8 @@ export type Task = {
   spentMs: number;
   order: number;
 };
+
+export type InternalNote = { id: string; text: string; author: string; at: number };
 
 export type List = { id: string; name: string; color: string };
 
@@ -49,7 +54,7 @@ export const COLORS = ["#0a84ff", "#ff9f0a", "#30d158", "#bf5af2", "#ff375f", "#
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
 function task(listId: string, title: string, order: number): Task {
-  return { id: uid(), listId, title, code: "", notes: "", done: false, createdAt: Date.now(), doneAt: null, spentMs: 0, order };
+  return { id: uid(), listId, title, code: "", notes: "", internalNotes: [], done: false, createdAt: Date.now(), doneAt: null, spentMs: 0, order };
 }
 
 export function defaults(): State {
@@ -81,7 +86,11 @@ export function normalize(raw: unknown): State {
     rev: Number(r.rev) || 0,
     lists: r.lists,
     // Las tareas creadas antes de existir el código no lo tienen.
-    tasks: r.tasks.map((t) => ({ ...t, code: typeof t.code === "string" ? t.code : "" })),
+    tasks: r.tasks.map((t) => ({
+      ...t,
+      code: typeof t.code === "string" ? t.code : "",
+      internalNotes: Array.isArray(t.internalNotes) ? t.internalNotes : [],
+    })),
     selectedListId: r.selectedListId ?? r.lists[0]?.id ?? null,
     active: { taskId: r.active?.taskId ?? null, since: r.active?.since ?? null },
     settings,
@@ -240,6 +249,11 @@ export function addTask(s: State, listId: string, title: string): void {
 export function removeTask(s: State, id: string): void {
   if (s.active.taskId === id) s.active = { taskId: null, since: null };
   s.tasks = s.tasks.filter((t) => t.id !== id);
+}
+
+export function removeInternalNote(s: State, taskId: string, noteId: string): void {
+  const t = findTask(s, taskId);
+  if (t) t.internalNotes = t.internalNotes.filter((n) => n.id !== noteId);
 }
 
 export function addList(s: State): List {

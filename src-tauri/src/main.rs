@@ -9,11 +9,13 @@
 //   principal, para no mantener un segundo webview en memoria.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod mcp;
+mod ops;
 mod visibility;
 
 use std::{
     fs,
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering::Relaxed},
         Mutex,
@@ -26,6 +28,8 @@ use tauri::{
     AppHandle, Emitter, LogicalSize, Manager, WebviewUrl, WebviewWindowBuilder, Window, WindowEvent,
 };
 
+// Escritura atómica: nunca deja el archivo a medias si se corta la luz.
+use mcp::write_atomic;
 use visibility::Backend;
 
 const MAIN: &str = "main";
@@ -79,13 +83,6 @@ fn widget_scale_of(v: &serde_json::Value) -> f64 {
     }
 }
 
-/// Escritura atómica: nunca deja el archivo a medias si se corta la luz.
-fn write_atomic(path: &Path, data: &str) -> std::io::Result<()> {
-    let tmp = path.with_extension("json.tmp");
-    fs::write(&tmp, data)?;
-    fs::rename(&tmp, path)
-}
-
 // ───────────────────────── Comandos ─────────────────────────
 
 #[tauri::command]
@@ -96,6 +93,24 @@ fn get_state(store: tauri::State<'_, Store>) -> String {
 #[tauri::command]
 fn set_state(app: AppHandle, store: tauri::State<'_, Store>, state: String) -> Result<(), String> {
     let v: serde_json::Value = serde_json::from_str(&state).map_err(|e| e.to_string())?;
+    {
+        let mut cur = store.json.lock().unwrap();
+        let cur_v = serde_json::from_str::<serde_json::Value>(&cur).unwrap_or_default();
+        // Cada cambio sube `rev`. Si llega uno que no supera el actual, se hizo
+        // sobre un estado viejo (p. ej. el MCP cambió algo a la vez): gana el
+        // actual, que se reenvía con `rev` nueva para que las ventanas se pongan al día.
+        if !cur.is_empty() && ops::rev(&v) <= ops::rev(&cur_v) {
+            let mut fresh = cur_v;
+            ops::bump_rev(&mut fresh);
+            let fresh = fresh.to_string();
+            write_atomic(&store.path, &fresh).map_err(|e| e.to_string())?;
+            cur.clone_from(&fresh);
+            drop(cur);
+            return app.emit("state", fresh).map_err(|e| e.to_string());
+        }
+        write_atomic(&store.path, &state).map_err(|e| e.to_string())?;
+        cur.clone_from(&state);
+    }
     store.auto_widget.store(auto_widget_flag(&v), Relaxed);
     let scale = widget_scale_of(&v);
     let changed = {
@@ -106,11 +121,6 @@ fn set_state(app: AppHandle, store: tauri::State<'_, Store>, state: String) -> R
     };
     if changed {
         apply_widget_scale(&app, scale);
-    }
-    {
-        let mut cur = store.json.lock().unwrap();
-        write_atomic(&store.path, &state).map_err(|e| e.to_string())?;
-        cur.clone_from(&state);
     }
     app.emit("state", state).map_err(|e| e.to_string())
 }
@@ -333,7 +343,65 @@ fn on_window_event(window: &Window, event: &WindowEvent) {
     }
 }
 
+/// Recibe las operaciones del MCP (`foco --mcp`) mientras la app está abierta.
+/// La app es la única que escribe el estado; así no se pisan los cambios.
+#[cfg(unix)]
+fn start_mcp_socket(app: AppHandle) {
+    use std::os::unix::{fs::PermissionsExt, net::UnixListener};
+    let Some(path) = mcp::socket_path() else {
+        return;
+    };
+    let _ = fs::remove_file(&path);
+    let listener = match UnixListener::bind(&path) {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!(
+                "foco: no se pudo abrir el socket del MCP ({}): {e}",
+                path.display()
+            );
+            return;
+        }
+    };
+    let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o600));
+    thread::spawn(move || {
+        for conn in listener.incoming().flatten() {
+            let app = app.clone();
+            thread::spawn(move || serve_mcp(&app, conn));
+        }
+    });
+}
+
+#[cfg(unix)]
+fn serve_mcp(app: &AppHandle, conn: std::os::unix::net::UnixStream) {
+    use std::io::{BufRead, BufReader, Write};
+    let mut line = String::new();
+    if BufReader::new(&conn).read_line(&mut line).is_err() {
+        return;
+    }
+    let store = app.state::<Store>();
+    let (resp, new) = {
+        let mut cur = store.json.lock().unwrap();
+        let (resp, new) = mcp::handle_socket_request(&line, &cur);
+        if let Some(new) = &new {
+            if let Err(e) = write_atomic(&store.path, new) {
+                eprintln!("foco: no se pudo guardar el estado: {e}");
+            }
+            cur.clone_from(new);
+        }
+        (resp, new)
+    };
+    if let Some(new) = new {
+        let _ = app.emit("state", new);
+    }
+    let _ = (&conn).write_all(resp.as_bytes());
+}
+
 fn main() {
+    // `foco --mcp`: servidor MCP por stdin/stdout, sin interfaz.
+    if std::env::args().any(|a| a == "--mcp") {
+        mcp::run();
+        return;
+    }
     tauri::Builder::default()
         // Una sola instancia: volver a lanzar `foco` reutiliza la que ya corre.
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
@@ -379,6 +447,9 @@ fn main() {
                 widget_scale: Mutex::new(scale),
                 backend: visibility::backend(),
             });
+
+            #[cfg(unix)]
+            start_mcp_socket(app.handle().clone());
 
             // Eventos del compositor (Hyprland/Sway): cambiar de escritorio en
             // otro monitor puede tapar o destapar Foco sin cambiar su foco.

@@ -78,6 +78,7 @@ function row(s: S.State, t: S.Task): string {
   const open = expanded === t.id;
   const ms = S.elapsed(s, t);
   const preview = t.notes.split("\n")[0];
+  const inotes = t.internalNotes;
   const del = confirmId === t.id;
   return `<div class="task${t.done ? " done" : ""}${active ? " active" : ""}${open ? " open" : ""}" data-id="${t.id}">
     <button class="check" data-act="check" data-id="${t.id}" aria-label="${t.done ? "Marcar pendiente" : "Completar"}">${icon("check", 11)}</button>
@@ -89,19 +90,43 @@ function row(s: S.State, t: S.Task): string {
                <span>Código</span>
                <input data-key="code:${t.id}" data-id="${t.id}" value="${esc(t.code)}" placeholder="Código interno (p. ej. PRJ-142)" spellcheck="false" autocomplete="off" maxlength="40">
              </label>
-             <textarea class="task-notes" data-key="notes:${t.id}" data-id="${t.id}" placeholder="Añadir notas" rows="3">${esc(t.notes)}</textarea>`
-          : preview || t.code
-            ? `<div class="task-preview">${t.code ? `<span class="code-chip">${esc(t.code)}</span>` : ""}${esc(preview)}</div>`
+             ${inotes.length ? internalNotes(t) : ""}
+             ${inotes.length ? `<div class="reply-label">Tu respuesta</div>` : ""}
+             <textarea class="task-notes" data-key="notes:${t.id}" data-id="${t.id}" placeholder="${inotes.length ? "Responder a las notas internas" : "Añadir notas"}" rows="3">${esc(t.notes)}</textarea>`
+          : preview || t.code || inotes.length
+            ? `<div class="task-preview">${t.code ? `<span class="code-chip">${esc(t.code)}</span>` : ""}${
+                inotes.length ? `<span class="inote-badge" title="Notas internas">${icon("chat", 11)}${inotes.length}</span>` : ""
+              }${esc(preview)}</div>`
             : ""
       }
     </div>
     <span class="task-time"${active ? " data-timer" : ""}>${ms >= 1000 ? S.fmt(ms) : ""}</span>
     <div class="task-tools">
-      <button class="icon-btn${open || t.notes || t.code ? " on" : ""}" data-act="notes" data-id="${t.id}" title="Código y notas">${icon("notes", 15)}</button>
+      <button class="icon-btn${open || t.notes || t.code || inotes.length ? " on" : ""}" data-act="notes" data-id="${t.id}" title="Código y notas">${icon("notes", 15)}</button>
       ${t.done ? "" : `<button class="icon-btn${active ? " on" : ""}" data-act="focus" data-id="${t.id}" title="Poner en foco">${icon("target", 15)}</button>`}
       <button class="icon-btn del${del ? " confirm" : ""}" data-act="del-task" data-id="${t.id}" title="Eliminar">${del ? "Eliminar" : icon("trash", 15)}</button>
     </div>
   </div>`;
+}
+
+const when = (ms: number) =>
+  new Date(ms).toLocaleString("es", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+/** Apartado de notas internas (las que añade Claude por MCP). */
+function internalNotes(t: S.Task): string {
+  const items = t.internalNotes
+    .map((n) => {
+      const key = `inote:${n.id}`;
+      const del = confirmId === key;
+      return `<div class="inote">
+        <div class="inote-meta"><span class="inote-author">${esc(n.author || "Nota")}</span> · ${esc(when(n.at))}
+          <button class="inote-del${del ? " confirm" : ""}" data-act="del-inote" data-id="${t.id}" data-note="${esc(n.id)}" title="Eliminar nota">${del ? "Eliminar" : icon("x", 11)}</button>
+        </div>
+        <div class="inote-text">${esc(n.text)}</div>
+      </div>`;
+    })
+    .join("");
+  return `<div class="inotes"><div class="inotes-head">${icon("chat", 12)}Notas internas</div>${items}</div>`;
 }
 
 function content(s: S.State): string {
@@ -263,7 +288,7 @@ root.addEventListener("click", (e) => {
   if (!el) {
     // Clic en el cuerpo de una tarea (no en el texto): abre/cierra notas
     const task = target.closest<HTMLElement>(".task");
-    if (task && !target.closest("input, textarea, .task-code")) {
+    if (task && !target.closest("input, textarea, .task-code, .inotes")) {
       expanded = expanded === task.dataset.id ? null : task.dataset.id!;
       render();
     }
@@ -307,6 +332,10 @@ root.addEventListener("click", (e) => {
       return;
     case "del-task":
       return confirmThen(id, () => void S.update((s) => S.removeTask(s, id)));
+    case "del-inote": {
+      const note = el.dataset.note ?? "";
+      return confirmThen(`inote:${note}`, () => void S.update((s) => S.removeInternalNote(s, id, note)));
+    }
     case "timer":
       return void S.update(S.toggle);
     case "complete-active":
