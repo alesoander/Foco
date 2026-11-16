@@ -156,7 +156,7 @@ Los datos se guardan en `~/.local/share/io.github.foco/state.json`.
 
 ## Problemas conocidos
 
-- **Pantalla en blanco o parpadeos con NVIDIA**: lanza la app con `WEBKIT_DISABLE_DMABUF_RENDERER=1 foco`. En Hyprland, por ejemplo: `env = WEBKIT_DISABLE_DMABUF_RENDERER,1`.
+- **`Error 71 (Error de protocolo)`, pantalla en blanco o parpadeos (sobre todo con NVIDIA)**: los causa el renderizador DMABUF de WebKitGTK. Foco lo desactiva por su cuenta (`WEBKIT_DISABLE_DMABUF_RENDERER=1`). Si quieres probar con él activado, lanza `WEBKIT_DISABLE_DMABUF_RENDERER=0 foco`.
 - **El widget no queda encima**: faltan las reglas del compositor (ver arriba). Otra opción es forzar XWayland con `GDK_BACKEND=x11 foco`; ahí *always‑on‑top* funciona sin reglas, pero el escalado HiDPI puede verse peor.
 - **Hyprland no tiene "minimizar"**: por eso existen el botón amarillo, el atajo `--toggle` y el modo automático al cambiar de ventana.
 

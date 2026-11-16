@@ -402,6 +402,14 @@ fn main() {
         mcp::run();
         return;
     }
+    // El renderizador DMABUF de WebKitGTK provoca "Error 71 (Error de
+    // protocolo)" en Wayland con algunos drivers (sobre todo NVIDIA). Se
+    // desactiva antes de iniciar GTK, salvo que el usuario ya haya elegido
+    // un valor. Para una ventana tan sencilla no se nota la diferencia.
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
     tauri::Builder::default()
         // Una sola instancia: volver a lanzar `foco` reutiliza la que ya corre.
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
