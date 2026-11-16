@@ -3,6 +3,8 @@
 Organizador de tareas para escritorio Linux (pensado para **Arch + Hyprland/Sway**) con un **widget flotante siempre visible** que muestra la tarea en la que estás trabajando, al estilo del picture‑in‑picture de Google Meet. Interfaz de vidrio esmerilado inspirada en macOS.
 
 - **Listas y tareas**: crear, renombrar y colorear listas; tareas con código interno y notas; completadas plegables.
+- **Notas internas y respuestas**: cada tarea tiene un apartado *Notas internas* (las añade Claude por MCP). Tus notas comunes son tu *respuesta* a esas notas, y Claude puede leerlas.
+- **MCP para Claude**: Claude puede crear listas y tareas, asignar códigos, marcar tareas como concluidas, consultar su estado y añadir notas internas (ver [MCP para Claude](#mcp-para-claude)).
 - **Código interno**: cada tarea puede llevar un código propio (p. ej. `PRJ-142`). Se edita al abrir las notas de la tarea y se ve como etiqueta junto a la vista previa.
 - **Tarea en foco**: pulsa ◎ en una tarea y empieza el cronómetro. El tiempo se acumula por tarea.
 - **Widget flotante (320×84 al 100 %)**: muestra la tarea y el tiempo, y se puede arrastrar. Al pasar el ratón aparecen los botones *completar*, *siguiente* y *abrir*. Con doble clic vuelves a la app.
@@ -78,6 +80,41 @@ Para el vidrio esmerilado hace falta el blur del compositor. En Hyprland viene a
 
 > La sintaxis Lua se tomó de la wiki de Hyprland (rama en desarrollo, noviembre 2026), pero no la he probado en un Hyprland real. Si algo no encaja, comprueba el título de las ventanas con `hyprctl clients`.
 
+## MCP para Claude
+
+El mismo binario hace de servidor MCP con `foco --mcp` (por stdin/stdout). No hace falta instalar nada más.
+
+**Claude Code:**
+
+```bash
+claude mcp add --scope user foco -- foco --mcp
+```
+
+**Claude Desktop** (`~/.config/Claude/claude_desktop_config.json` en Linux):
+
+```json
+{
+  "mcpServers": {
+    "foco": { "command": "foco", "args": ["--mcp"] }
+  }
+}
+```
+
+| Herramienta | Qué hace |
+|---|---|
+| `listar_listas` | Listas con sus tareas pendientes y concluidas |
+| `crear_lista` | Crea una lista (nombre y color opcional) |
+| `listar_tareas` | Tareas con su estado (concluida o pendiente), código, tiempo, nº de notas internas y si respondiste. Filtra por lista y estado |
+| `ver_tarea` | Detalle: estado, notas internas y tu respuesta |
+| `crear_tarea` | Crea una tarea, con código y primera nota interna opcionales |
+| `asignar_codigo` | Asigna o cambia el código interno (son únicos) |
+| `marcar_concluida` | Concluye una tarea o la devuelve a pendiente |
+| `agregar_nota_interna` | Añade una nota al apartado *Notas internas* |
+
+Las tareas se pueden indicar por su id o por su código interno, y las listas por id o por nombre.
+
+**Cómo se sincroniza**: si Foco está abierto, el MCP le envía cada operación por un socket local (`$XDG_RUNTIME_DIR/foco-mcp.sock`) y es la app quien la aplica, la guarda y actualiza sus ventanas al momento. Si Foco está cerrado, el MCP edita directamente `state.json`. Así nunca hay dos procesos escribiendo el mismo archivo. En Windows no hay socket: con la app abierta, sus cambios podrían sobrescribir los del MCP.
+
 ## Uso
 
 | Acción | Cómo |
@@ -85,6 +122,7 @@ Para el vidrio esmerilado hace falta el blur del compositor. En Hyprland viene a
 | Nueva tarea | `Ctrl+N`, o escribe en "Nueva tarea" y pulsa Enter |
 | Poner en foco / iniciar / pausar | ◎ en la tarea · `Espacio` |
 | Notas y código interno | Clic en la fila o en el icono de notas. `Enter` en el código pasa a las notas |
+| Notas internas | Se ven al abrir las notas; el contador azul de la fila indica cuántas hay. Tus notas comunes son la respuesta. Para borrar una, pasa el ratón y pulsa la ✕ dos veces |
 | Tamaño del widget | `Ctrl` + rueda sobre el widget · *Ajustes → Tamaño del widget* |
 | Renombrar lista | Doble clic en su nombre · clic en el icono para cambiar el color |
 | Eliminar | Papelera y luego "Eliminar" (dos clics) |
@@ -97,6 +135,7 @@ Parámetros de línea de comandos (si Foco ya está abierto, los recibe la insta
 
 - `foco --toggle`: alterna entre la ventana y el widget.
 - `foco --widget`: arranca o pasa directamente al widget.
+- `foco --mcp`: servidor MCP para Claude (no abre ninguna ventana).
 
 Los datos se guardan en `~/.local/share/io.github.foco/state.json`.
 
@@ -111,12 +150,13 @@ Los datos se guardan en `~/.local/share/io.github.foco/state.json`.
 - **Probado en Linux (X11 virtual, WebKitGTK 2.x)**:
   - el tamaño del widget: se crea con el tamaño guardado, `Ctrl` + rueda lo cambia paso a paso y el contenido escala proporcionalmente;
   - la detección con Hyprland, contra un servidor que imita su IPC: no aparece si Foco sigue visible; aparece al cambiar de escritorio o con una ventana a pantalla completa encima; se oculta al volver a verse Foco.
-- **Sin probar**: Hyprland y Sway reales, la detección X11 con dos monitores reales (el servidor X virtual solo ofrece uno), la transparencia, el arrastre de ventanas y el PKGBUILD.
+- **MCP**: pruebas unitarias de las operaciones (`cargo test`) y prueba completa con la app abierta en X11 virtual: los cambios del MCP aparecen al momento en la ventana, la respuesta escrita en la app se lee por MCP y, con la app cerrada, el MCP edita el archivo.
+- **Sin probar**: Claude Code o Claude Desktop conectados de verdad (el protocolo se probó a mano), Hyprland y Sway reales, la detección X11 con dos monitores reales (el servidor X virtual solo ofrece uno), la transparencia, el arrastre de ventanas y el PKGBUILD.
 - **Cronómetro**: si apagas el equipo con el cronómetro en marcha, al arrancar se pausa. Se pierden como mucho los últimos 5 minutos, porque se guarda un punto de control cada 5 minutos.
 
 ## Problemas conocidos
 
-- **Pantalla en blanco o parpadeos con NVIDIA**: lanza la app con `WEBKIT_DISABLE_DMABUF_RENDERER=1 foco`. En Hyprland, por ejemplo: `env = WEBKIT_DISABLE_DMABUF_RENDERER,1`.
+- **`Error 71 (Error de protocolo)`, pantalla en blanco o parpadeos (sobre todo con NVIDIA)**: los causa el renderizador DMABUF de WebKitGTK. Foco lo desactiva por su cuenta (`WEBKIT_DISABLE_DMABUF_RENDERER=1`). Si quieres probar con él activado, lanza `WEBKIT_DISABLE_DMABUF_RENDERER=0 foco`.
 - **El widget no queda encima**: faltan las reglas del compositor (ver arriba). Otra opción es forzar XWayland con `GDK_BACKEND=x11 foco`; ahí *always‑on‑top* funciona sin reglas, pero el escalado HiDPI puede verse peor.
 - **Hyprland no tiene "minimizar"**: por eso existen el botón amarillo, el atajo `--toggle` y el modo automático al cambiar de ventana.
 
@@ -133,6 +173,8 @@ src/                    Interfaz (TypeScript + CSS, sin framework)
 src-tauri/
   src/main.rs           Estado, ventanas, widget, instancia única
   src/visibility.rs     ¿Sigue Foco a la vista? (Hyprland, Sway, X11/Windows)
+  src/mcp.rs            Servidor MCP (`foco --mcp`) y socket con la app abierta
+  src/ops.rs            Operaciones del MCP sobre el estado
   tauri.conf.json       Ventana principal transparente y sin decoraciones
   capabilities/         Permisos de las dos ventanas
 packaging/

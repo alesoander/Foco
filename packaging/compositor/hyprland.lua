@@ -41,5 +41,5 @@ hl.on("hyprland.start", function()
   hl.exec_cmd("foco --widget")
 end)
 
--- Solo si tienes NVIDIA y ves la ventana en blanco:
--- hl.env("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
+-- WEBKIT_DISABLE_DMABUF_RENDERER=1 ya lo activa Foco por su cuenta
+-- (evita "Error 71" y la ventana en blanco con NVIDIA); no hace falta aquí.

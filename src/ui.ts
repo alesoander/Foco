@@ -38,6 +38,8 @@ const PATHS: Record<string, string> = {
   list: '<path d="M9 7h10M9 12h10M9 17h10"/><circle cx="5" cy="7" r=".6"/><circle cx="5" cy="12" r=".6"/><circle cx="5" cy="17" r=".6"/>',
   notes: '<path d="M5 6.5h14M5 11.5h14M5 16.5h9"/>',
   chevron: '<path d="M9 6l6 6-6 6"/>',
+  chat: '<path d="M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v8.5A1.5 1.5 0 0 1 19 17h-7.5L7 20.5V17H5a1.5 1.5 0 0 1-1.5-1.5V7A1.5 1.5 0 0 1 5 5.5z"/>',
+  x: '<path d="M7 7l10 10M17 7L7 17"/>',
 };
 
 export function icon(name: keyof typeof PATHS, size = 16): string {
