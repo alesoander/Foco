@@ -2,7 +2,9 @@
 
 Organizador de tareas para escritorio Linux (pensado para **Arch + Hyprland/Sway**) con un **widget flotante siempre visible** que muestra la tarea en la que estás trabajando, al estilo del picture‑in‑picture de Google Meet. Interfaz de vidrio esmerilado inspirada en macOS.
 
-- **Listas y tareas**: crear, renombrar y colorear listas; tareas con código interno y notas; completadas plegables.
+- **Listas y tareas**: crear, renombrar y colorear listas; tareas con código interno, fecha de vencimiento y notas; completadas plegables.
+- **Fechas de vencimiento**: selector con atajos (Hoy, Mañana, Próx. lunes, En 1 semana) y calendario. La etiqueta de la tarea se pone azul si vence en 2 días o menos, naranja si vence hoy y roja si está vencida.
+- **Arrastrar tareas a otra lista**: arrastra la tarea (por el asa ⠿ o por cualquier zona que no sea texto) hasta una lista de la barra lateral.
 - **Notas internas y respuestas**: cada tarea tiene un apartado *Notas internas* (las añade Claude por MCP). Tus notas comunes son tu *respuesta* a esas notas, y Claude puede leerlas.
 - **MCP para Claude**: Claude puede crear listas y tareas, asignar códigos, marcar tareas como concluidas, consultar su estado y añadir notas internas (ver [MCP para Claude](#mcp-para-claude)).
 - **Código interno**: cada tarea puede llevar un código propio (p. ej. `PRJ-142`). Se edita al abrir las notas de la tarea y se ve como etiqueta junto a la vista previa.
@@ -104,10 +106,13 @@ claude mcp add --scope user foco -- foco --mcp
 |---|---|
 | `listar_listas` | Listas con sus tareas pendientes y concluidas |
 | `crear_lista` | Crea una lista (nombre y color opcional) |
-| `listar_tareas` | Tareas con su estado (concluida o pendiente), código, tiempo, nº de notas internas y si respondiste. Filtra por lista y estado |
+| `renombrar_lista` | Cambia el nombre y/o el color de una lista |
+| `listar_tareas` | Tareas con su estado (concluida o pendiente), código, vencimiento (y si está vencida), tiempo, nº de notas internas y si respondiste. Filtra por lista, estado y `vence_hasta` |
 | `ver_tarea` | Detalle: estado, notas internas y tu respuesta |
-| `crear_tarea` | Crea una tarea, con código y primera nota interna opcionales |
+| `crear_tarea` | Crea una tarea, con código, vencimiento y primera nota interna opcionales |
 | `asignar_codigo` | Asigna o cambia el código interno (son únicos) |
+| `asignar_vencimiento` | Asigna, cambia o quita la fecha de vencimiento (`AAAA-MM-DD`, fecha local) |
+| `mover_tarea` | Mueve una tarea a otra lista |
 | `marcar_concluida` | Concluye una tarea o la devuelve a pendiente |
 | `agregar_nota_interna` | Añade una nota al apartado *Notas internas* |
 
@@ -124,7 +129,9 @@ Las tareas se pueden indicar por su id o por su código interno, y las listas po
 | Notas y código interno | Clic en la fila o en el icono de notas. `Enter` en el código pasa a las notas |
 | Notas internas | Se ven al abrir las notas; el contador azul de la fila indica cuántas hay. Tus notas comunes son la respuesta. Para borrar una, pasa el ratón y pulsa la ✕ dos veces |
 | Tamaño del widget | `Ctrl` + rueda sobre el widget · *Ajustes → Tamaño del widget* |
-| Renombrar lista | Doble clic en su nombre · clic en el icono para cambiar el color |
+| Renombrar lista | Lápiz al pasar el ratón por la lista o junto al título · clic en el icono de la lista para cambiar el color |
+| Fecha de vencimiento | Abre las notas de la tarea → *Vence* → elige atajo o día. La ✕ la quita |
+| Mover a otra lista | Arrastra la tarea hasta la lista en la barra lateral · `Esc` cancela |
 | Eliminar | Papelera y luego "Eliminar" (dos clics) |
 | Minimizar a widget | Botón amarillo o rojo · `Ctrl+M` · botón "Widget" |
 | Volver a la app | Doble clic en el widget o su botón ⤢ |
