@@ -14,6 +14,8 @@ let settingsOpen = false;
 let confirmId: string | null = null;
 let confirmTimer = 0;
 let rendering = false;
+/** Selector de fecha abierto: tarea y mes mostrado ("AAAA-MM"). */
+let duePick: { id: string; month: string } | null = null;
 
 // ───────────────────────── Vistas ─────────────────────────
 
@@ -37,7 +39,8 @@ function sidebar(s: S.State): string {
           : "";
       return `<div class="list-item${l.id === s.selectedListId ? " sel" : ""}" data-act="select-list" data-id="${l.id}">
         <span class="list-icon" style="--c:${color(l.color)}" data-act="cycle-color" data-id="${l.id}" title="Cambiar color">${icon("list", 12)}</span>
-        ${name}<span class="list-count">${n || ""}</span>${del}
+        ${name}<span class="list-count">${n || ""}</span>
+        ${editingList === l.id ? "" : `<button class="list-edit" data-act="rename-list" data-id="${l.id}" title="Renombrar lista">${icon("pencil", 12)}</button>`}${del}
       </div>`;
     })
     .join("");
@@ -90,11 +93,12 @@ function row(s: S.State, t: S.Task): string {
                <span>Código</span>
                <input data-key="code:${t.id}" data-id="${t.id}" value="${esc(t.code)}" placeholder="Código interno (p. ej. PRJ-142)" spellcheck="false" autocomplete="off" maxlength="40">
              </label>
+             ${dueRow(t)}
              ${inotes.length ? internalNotes(t) : ""}
              ${inotes.length ? `<div class="reply-label">Tu respuesta</div>` : ""}
              <textarea class="task-notes" data-key="notes:${t.id}" data-id="${t.id}" placeholder="${inotes.length ? "Responder a las notas internas" : "Añadir notas"}" rows="3">${esc(t.notes)}</textarea>`
-          : preview || t.code || inotes.length
-            ? `<div class="task-preview">${t.code ? `<span class="code-chip">${esc(t.code)}</span>` : ""}${
+          : preview || t.code || inotes.length || t.due
+            ? `<div class="task-preview">${dueChip(t)}${t.code ? `<span class="code-chip">${esc(t.code)}</span>` : ""}${
                 inotes.length ? `<span class="inote-badge" title="Notas internas">${icon("chat", 11)}${inotes.length}</span>` : ""
               }${esc(preview)}</div>`
             : ""
@@ -102,10 +106,80 @@ function row(s: S.State, t: S.Task): string {
     </div>
     <span class="task-time"${active ? " data-timer" : ""}>${ms >= 1000 ? S.fmt(ms) : ""}</span>
     <div class="task-tools">
+      <span class="grip" data-grip title="Arrastrar a otra lista">${icon("grip", 15)}</span>
       <button class="icon-btn${open || t.notes || t.code || inotes.length ? " on" : ""}" data-act="notes" data-id="${t.id}" title="Código y notas">${icon("notes", 15)}</button>
       ${t.done ? "" : `<button class="icon-btn${active ? " on" : ""}" data-act="focus" data-id="${t.id}" title="Poner en foco">${icon("target", 15)}</button>`}
       <button class="icon-btn del${del ? " confirm" : ""}" data-act="del-task" data-id="${t.id}" title="Eliminar">${del ? "Eliminar" : icon("trash", 15)}</button>
     </div>
+  </div>`;
+}
+
+// ───────────────────────── Vencimiento ─────────────────────────
+
+function dueLabel(v: string): string {
+  const n = S.daysUntil(v);
+  if (n === 0) return "Hoy";
+  if (n === 1) return "Mañana";
+  if (n === -1) return "Ayer";
+  const d = S.parseDay(v);
+  const year = d.getFullYear() !== new Date().getFullYear();
+  return d.toLocaleDateString("es", { day: "numeric", month: "short", ...(year ? { year: "numeric" } : {}) });
+}
+
+function dueClass(t: S.Task): string {
+  if (!t.due || t.done) return "";
+  const n = S.daysUntil(t.due);
+  return n < 0 ? " late" : n === 0 ? " today" : n <= 2 ? " soon" : "";
+}
+
+const dueTitle = (v: string) =>
+  "Vence el " + S.parseDay(v).toLocaleDateString("es", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+
+const dueChip = (t: S.Task) =>
+  t.due
+    ? `<span class="due-chip${dueClass(t)}" title="${esc(dueTitle(t.due))}${dueClass(t) === " late" ? " (vencida)" : ""}">${icon("calendar", 11)}${esc(dueLabel(t.due))}</span>`
+    : "";
+
+function dueRow(t: S.Task): string {
+  const open = duePick?.id === t.id;
+  return `<div class="task-due">
+    <span class="task-due-label">Vence</span>
+    <button class="due-btn${dueClass(t)}${t.due ? "" : " empty"}" data-act="due-open" data-id="${t.id}">${icon("calendar", 13)}${
+      t.due ? esc(dueTitle(t.due).replace("Vence el ", "")) : "Sin fecha"
+    }</button>
+    ${t.due ? `<button class="due-clear" data-act="due-set" data-id="${t.id}" data-day="" title="Quitar fecha">${icon("x", 11)}</button>` : ""}
+    ${open ? duePopover(t) : ""}
+  </div>`;
+}
+
+const WEEKDAYS = ["L", "M", "X", "J", "V", "S", "D"];
+
+function duePopover(t: S.Task): string {
+  const [y, m] = duePick!.month.split("-").map(Number);
+  const first = new Date(y, m - 1, 1, 12);
+  const blanks = (first.getDay() + 6) % 7; // semana empieza en lunes
+  const days = new Date(y, m, 0).getDate();
+  const now = new Date();
+  const today = S.dayKey(now);
+  const set = (d: Date, label: string) =>
+    `<button data-act="due-set" data-id="${t.id}" data-day="${S.dayKey(d)}">${label}</button>`;
+  const monday = S.addDays(now, (8 - now.getDay()) % 7 || 7);
+  let cells = "<span></span>".repeat(blanks);
+  for (let d = 1; d <= days; d++) {
+    const key = S.dayKey(new Date(y, m - 1, d, 12));
+    const cls = [key === today ? "today" : "", key === t.due ? "sel" : "", key < today ? "past" : ""].filter(Boolean).join(" ");
+    cells += `<button class="${cls}" data-act="due-set" data-id="${t.id}" data-day="${key}">${d}</button>`;
+  }
+  const month = first.toLocaleDateString("es", { month: "long", year: "numeric" });
+  const title = month.charAt(0).toUpperCase() + month.slice(1);
+  return `<div class="due-pop glass" role="dialog" aria-label="Fecha de vencimiento">
+    <div class="due-quick">${set(now, "Hoy")}${set(S.addDays(now, 1), "Mañana")}${set(monday, "Próx. lunes")}${set(S.addDays(now, 7), "En 1 semana")}</div>
+    <div class="cal-head">
+      <button class="icon-btn" data-act="due-month" data-delta="-1" title="Mes anterior">${icon("left", 14)}</button>
+      <span>${esc(title)}</span>
+      <button class="icon-btn" data-act="due-month" data-delta="1" title="Mes siguiente">${icon("chevron", 14)}</button>
+    </div>
+    <div class="cal-grid">${WEEKDAYS.map((w) => `<span class="cal-wd">${w}</span>`).join("")}${cells}</div>
   </div>`;
 }
 
@@ -139,7 +213,10 @@ function content(s: S.State): string {
   return `<main class="content">
     <header class="head drag">
       <div class="head-text drag">
-        <h1 class="drag" style="color:${color(list.color)}">${esc(list.name)}</h1>
+        <div class="head-title drag">
+          <h1 class="drag" style="color:${color(list.color)}">${esc(list.name)}</h1>
+          <button class="icon-btn head-edit" data-act="rename-list" data-id="${list.id}" title="Renombrar lista">${icon("pencil", 14)}</button>
+        </div>
         <p class="sub drag">${plural(todo.length, "pendiente")}${done.length ? ` · ${plural(done.length, "completada")}` : ""}</p>
       </div>
       <button class="btn" data-act="widget" title="Minimizar al widget (Ctrl+M)">${icon("pip", 15)}<span>Widget</span></button>
@@ -283,12 +360,18 @@ const isTyping = (t: EventTarget | null) =>
   t instanceof HTMLElement && (t.tagName === "INPUT" || t.tagName === "TEXTAREA") && (t as HTMLInputElement).type !== "range";
 
 root.addEventListener("click", (e) => {
+  if (suppressClick) return;
   const target = e.target as HTMLElement;
   const el = target.closest<HTMLElement>("[data-act]");
+  // Clic fuera del selector de fecha: se cierra
+  if (duePick && !target.closest(".due-pop, .due-btn")) {
+    duePick = null;
+    if (!el) return render();
+  }
   if (!el) {
     // Clic en el cuerpo de una tarea (no en el texto): abre/cierra notas
     const task = target.closest<HTMLElement>(".task");
-    if (task && !target.closest("input, textarea, .task-code, .inotes")) {
+    if (task && !target.closest("input, textarea, .task-code, .inotes, .task-due, [data-grip]")) {
       expanded = expanded === task.dataset.id ? null : task.dataset.id!;
       render();
     }
@@ -301,7 +384,7 @@ root.addEventListener("click", (e) => {
     case "max":
       return B.toggleMaximize();
     case "select-list":
-      if (editingList === id) return;
+      if (editingList === id || S.get().selectedListId === id) return;
       expanded = null;
       return void S.update((s) => void (s.selectedListId = id));
     case "cycle-color":
@@ -316,6 +399,27 @@ root.addEventListener("click", (e) => {
       render();
       return focusKey(`list:${nid}`, true);
     }
+    case "rename-list":
+      editingList = id;
+      render();
+      return focusKey(`list:${id}`, true);
+    case "due-open": {
+      if (duePick?.id === id) duePick = null;
+      else {
+        const t = S.findTask(S.get(), id);
+        duePick = { id, month: (t?.due ?? S.dayKey(new Date())).slice(0, 7) };
+      }
+      return render();
+    }
+    case "due-month": {
+      if (!duePick) return;
+      const [y, m] = duePick.month.split("-").map(Number);
+      duePick.month = S.dayKey(new Date(y, m - 1 + Number(el.dataset.delta), 1, 12)).slice(0, 7);
+      return render();
+    }
+    case "due-set":
+      duePick = null;
+      return void S.update((s) => S.setDue(s, id, el.dataset.day || null));
     case "del-list":
       return confirmThen(id, () => void S.update((s) => S.removeList(s, id)));
     case "check":
@@ -476,13 +580,89 @@ document.addEventListener("keydown", (e) => {
     settingsOpen = !settingsOpen;
     render();
   } else if (e.key === "Escape") {
-    if (settingsOpen) settingsOpen = false;
+    if (drag) return cancelDrag();
+    if (duePick) duePick = null;
+    else if (settingsOpen) settingsOpen = false;
     else if (expanded) expanded = null;
     else return (document.activeElement as HTMLElement | null)?.blur();
     render();
   } else if (e.key === " " && !isTyping(e.target) && !mod) {
     e.preventDefault();
     void S.update(S.toggle);
+  }
+});
+
+// ─────────────── Arrastrar una tarea a otra lista ───────────────
+// Con eventos de ratón (no HTML5 drag & drop): funciona igual en WebKitGTK,
+// WebView2 y el navegador, y no choca con la gestión de archivos de Tauri.
+
+type Drag = { id: string; x: number; y: number; on: boolean; ghost?: HTMLElement; over: string | null };
+let drag: Drag | null = null;
+let suppressClick = false;
+
+root.addEventListener("mousedown", (e) => {
+  if (e.button !== 0) return;
+  const t = e.target as HTMLElement;
+  const task = t.closest<HTMLElement>(".task");
+  if (!task?.dataset.id) return;
+  // Se arrastra desde el asa o desde cualquier zona de la fila que no sea editable.
+  if (!t.closest("[data-grip]") && t.closest("input, textarea, button, .task-code, .inotes, .task-due")) return;
+  if (t.closest("[data-grip]")) e.preventDefault();
+  drag = { id: task.dataset.id, x: e.clientX, y: e.clientY, on: false, over: null };
+});
+
+function setDropTarget(listId: string | null): void {
+  if (!drag || drag.over === listId) return;
+  drag.over = listId;
+  root.querySelectorAll(".list-item.drop").forEach((n) => n.classList.remove("drop"));
+  if (listId) root.querySelector(`.list-item[data-id="${listId}"]`)?.classList.add("drop");
+  drag.ghost?.classList.toggle("ok", !!listId);
+}
+
+document.addEventListener("mousemove", (e) => {
+  if (!drag) return;
+  if (!drag.on) {
+    if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 5) return;
+    const t = S.findTask(S.get(), drag.id);
+    if (!t) return void (drag = null);
+    drag.on = true;
+    const ghost = document.createElement("div");
+    ghost.className = "drag-ghost";
+    ghost.innerHTML = `${icon("grip", 13)}<span>${esc(t.title) || "Sin título"}</span>`;
+    document.body.append(ghost);
+    drag.ghost = ghost;
+    document.documentElement.classList.add("dragging");
+    root.querySelector(`.task[data-id="${drag.id}"]`)?.classList.add("drag-src");
+    (document.activeElement as HTMLElement | null)?.blur();
+  }
+  e.preventDefault();
+  drag.ghost!.style.transform = `translate(${e.clientX + 12}px, ${e.clientY + 8}px)`;
+  const item = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>(".list-item");
+  const task = S.findTask(S.get(), drag.id);
+  const listId = item?.dataset.id ?? null;
+  setDropTarget(listId && listId !== task?.listId ? listId : null);
+});
+
+function cancelDrag(): void {
+  if (!drag) return;
+  drag.ghost?.remove();
+  setDropTarget(null);
+  document.documentElement.classList.remove("dragging");
+  root.querySelector(".task.drag-src")?.classList.remove("drag-src");
+  drag = null;
+}
+
+document.addEventListener("mouseup", () => {
+  if (!drag) return;
+  const { on, over, id } = drag;
+  cancelDrag();
+  if (!on) return;
+  // Evita que el clic que sigue al soltar abra o cierre la tarea.
+  suppressClick = true;
+  setTimeout(() => (suppressClick = false), 0);
+  if (over) {
+    if (expanded === id) expanded = null;
+    void S.update((s) => S.moveTask(s, id, over));
   }
 });
 

@@ -24,7 +24,8 @@ Las tareas se pueden buscar por id o por su código interno. \
 Las notas internas son tuyas (van en su propio apartado de la tarea); las notas \
 comunes del usuario son su RESPUESTA a esas notas internas y ver_tarea las \
 devuelve en el campo «respuesta». Usa listar_tareas o ver_tarea para conocer si \
-una tarea está concluida.";
+una tarea está concluida. Las fechas de vencimiento son AAAA-MM-DD en la \
+fecha local del usuario.";
 
 /// Misma ruta que `app_data_dir()` de Tauri.
 pub fn state_path() -> Option<PathBuf> {
@@ -178,7 +179,7 @@ fn handle(msg: &Value) -> Option<Value> {
                 "protocolVersion": version,
                 "capabilities": { "tools": { "listChanged": false } },
                 "serverInfo": { "name": "foco", "title": "Foco", "version": env!("CARGO_PKG_VERSION") },
-                "instructions": INSTRUCTIONS,
+                "instructions": format!("{INSTRUCTIONS} Hoy es {} (fecha local del usuario).", ops::today()),
             })
         }
         "ping" => json!({}),

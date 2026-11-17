@@ -11,6 +11,8 @@ export type Task = {
   notes: string;
   /** Notas internas (las añade Claude por MCP). Apartado propio en la tarea. */
   internalNotes: InternalNote[];
+  /** Fecha de vencimiento local "AAAA-MM-DD", o null. */
+  due: string | null;
   done: boolean;
   createdAt: number;
   doneAt: number | null;
@@ -54,7 +56,7 @@ export const COLORS = ["#0a84ff", "#ff9f0a", "#30d158", "#bf5af2", "#ff375f", "#
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
 function task(listId: string, title: string, order: number): Task {
-  return { id: uid(), listId, title, code: "", notes: "", internalNotes: [], done: false, createdAt: Date.now(), doneAt: null, spentMs: 0, order };
+  return { id: uid(), listId, title, code: "", notes: "", internalNotes: [], due: null, done: false, createdAt: Date.now(), doneAt: null, spentMs: 0, order };
 }
 
 export function defaults(): State {
@@ -90,6 +92,7 @@ export function normalize(raw: unknown): State {
       ...t,
       code: typeof t.code === "string" ? t.code : "",
       internalNotes: Array.isArray(t.internalNotes) ? t.internalNotes : [],
+      due: isDay(t.due) ? t.due : null,
     })),
     selectedListId: r.selectedListId ?? r.lists[0]?.id ?? null,
     active: { taskId: r.active?.taskId ?? null, since: r.active?.since ?? null },
@@ -254,6 +257,35 @@ export function removeTask(s: State, id: string): void {
 export function removeInternalNote(s: State, taskId: string, noteId: string): void {
   const t = findTask(s, taskId);
   if (t) t.internalNotes = t.internalNotes.filter((n) => n.id !== noteId);
+}
+
+/** Mueve una tarea a otra lista (al final). Conserva el foco y el cronómetro. */
+export function moveTask(s: State, id: string, listId: string): void {
+  const t = findTask(s, id);
+  if (!t || t.listId === listId || !s.lists.some((l) => l.id === listId)) return;
+  t.order = Math.max(-1, ...s.tasks.filter((x) => x.listId === listId).map((x) => x.order)) + 1;
+  t.listId = listId;
+}
+
+// ───────────────────────── Fechas ─────────────────────────
+
+const pad = (n: number) => String(n).padStart(2, "0");
+/** Fecha local "AAAA-MM-DD". */
+export const dayKey = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+export const isDay = (v: unknown): v is string =>
+  typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && dayKey(parseDay(v)) === v;
+/** "AAAA-MM-DD" → Date local a mediodía (evita saltos por horario de verano). */
+export const parseDay = (v: string) => {
+  const [y, m, d] = v.split("-").map(Number);
+  return new Date(y, m - 1, d, 12);
+};
+export const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n, 12);
+/** Días desde hoy hasta la fecha (negativo = vencida). */
+export const daysUntil = (v: string) => Math.round((parseDay(v).getTime() - addDays(new Date(), 0).getTime()) / 86_400_000);
+
+export function setDue(s: State, id: string, due: string | null): void {
+  const t = findTask(s, id);
+  if (t) t.due = due && isDay(due) ? due : null;
 }
 
 export function addList(s: State): List {

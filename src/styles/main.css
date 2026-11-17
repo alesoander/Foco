@@ -125,6 +125,26 @@ html.web .window {
   font-size: 11px;
   font-weight: 600;
 }
+.list-edit {
+  display: none;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  color: var(--text-3);
+}
+.list-item:hover .list-edit {
+  display: grid;
+}
+.list-edit:hover {
+  color: var(--text);
+  background: var(--fill-2);
+}
+/* Lista bajo una tarea que se arrastra */
+.list-item.drop {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
 .list-item:hover .list-del {
   display: grid;
   place-items: center;
@@ -191,6 +211,21 @@ html.web .window {
 }
 .head-text {
   min-width: 0;
+}
+.head-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.head-edit {
+  flex: none;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.head-title:hover .head-edit,
+.head-edit:focus-visible {
+  opacity: 1;
 }
 .sub {
   margin: 4px 0 0;
@@ -488,6 +523,218 @@ html.web .window {
   font-family: var(--font);
   font-weight: 400;
   color: var(--text-3);
+}
+.due-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-right: 6px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--fill-2);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  color: var(--text-2);
+  vertical-align: 1px;
+}
+.due-chip.soon {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.due-chip.today {
+  color: #c66a00;
+  background: rgba(255, 159, 10, 0.18);
+}
+.due-chip.late {
+  color: #fff;
+  background: var(--red);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .due-chip.today {
+    color: #ffb340;
+  }
+}
+:root[data-theme="dark"] .due-chip.today {
+  color: #ffb340;
+}
+.task-due {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 0 4px 0 10px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: inset 0 0 0 0.5px var(--hair);
+  cursor: default;
+}
+.task-due-label {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-3);
+}
+.due-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+}
+.due-btn:hover {
+  background: var(--fill-2);
+}
+.due-btn.empty {
+  color: var(--text-3);
+  font-weight: 400;
+}
+.due-btn.late {
+  color: var(--red);
+}
+.due-btn.today {
+  color: #c66a00;
+}
+.due-clear {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  color: var(--text-3);
+}
+.due-clear:hover {
+  background: var(--fill-2);
+  color: var(--text);
+}
+/* Selector de fecha (temporal: sin backdrop-filter, que es caro en WebKitGTK) */
+.due-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  width: 252px;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(var(--glass-rgb), 0.98);
+  box-shadow: inset 0 0 0 1px var(--card-edge), 0 12px 32px rgba(0, 0, 0, 0.22);
+}
+.due-quick {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.due-quick button {
+  height: 26px;
+  border-radius: 6px;
+  background: var(--fill);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+}
+.due-quick button:hover {
+  background: var(--fill-2);
+}
+.cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  text-align: center;
+}
+.cal-wd {
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 22px;
+  color: var(--text-3);
+}
+.cal-grid button {
+  height: 30px;
+  border-radius: 15px;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.cal-grid button:hover {
+  background: var(--fill-2);
+}
+.cal-grid button.past {
+  color: var(--text-3);
+}
+.cal-grid button.today {
+  color: var(--accent);
+  font-weight: 700;
+}
+.cal-grid button.sel {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.grip {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 28px;
+  color: var(--text-3);
+  cursor: grab;
+}
+.grip:hover {
+  color: var(--text);
+}
+.task.drag-src {
+  opacity: 0.4;
+}
+html.dragging,
+html.dragging * {
+  cursor: grabbing !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+.drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 260px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(var(--glass-rgb), 0.97);
+  box-shadow: inset 0 0 0 1px var(--card-edge), 0 8px 24px rgba(0, 0, 0, 0.25);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.drag-ghost span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.drag-ghost .i {
+  flex: none;
+  color: var(--text-3);
+}
+.drag-ghost.ok {
+  box-shadow: inset 0 0 0 1.5px var(--accent), 0 8px 24px rgba(0, 0, 0, 0.25);
 }
 .inote-badge {
   display: inline-flex;

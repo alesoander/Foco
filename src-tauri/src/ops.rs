@@ -12,6 +12,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use chrono::NaiveDate;
 use serde_json::{json, Value};
 
 /// Colores de las listas (mismos que `COLORS` en `src/store.ts`).
@@ -113,6 +114,9 @@ pub fn call(state: &mut Value, tool: &str, args: &Value) -> R {
     match tool {
         "listar_listas" => listar_listas(state),
         "crear_lista" => crear_lista(state, args),
+        "renombrar_lista" => renombrar_lista(state, args),
+        "mover_tarea" => mover_tarea(state, args),
+        "asignar_vencimiento" => asignar_vencimiento(state, args),
         "listar_tareas" => listar_tareas(state, args),
         "ver_tarea" => ver_tarea(state, args),
         "crear_tarea" => crear_tarea(state, args),
@@ -242,6 +246,11 @@ fn task_view(state: &Value, t: &Value, full: bool) -> Value {
         "en_foco": state["active"]["taskId"] == t["id"],
         "tiempo_en_foco": fmt_ms(elapsed(state, t)),
     });
+    let due = t["due"].as_str().and_then(|d| parse_day(d).ok());
+    let days = due.map(|d| (d - today()).num_days());
+    v["vencimiento"] = json!(due.map(|d| d.to_string()));
+    v["dias_para_vencer"] = json!(days);
+    v["vencida"] = json!(!done && days.is_some_and(|n| n < 0));
     let notes = internal_notes(t);
     let reply = t["notes"].as_str().unwrap_or("");
     if full {
@@ -264,6 +273,16 @@ fn task_view(state: &Value, t: &Value, full: bool) -> Value {
         v["tiene_respuesta"] = json!(!reply.trim().is_empty());
     }
     v
+}
+
+/// Fecha local de hoy (las fechas de vencimiento son locales, sin hora).
+pub fn today() -> NaiveDate {
+    chrono::Local::now().date_naive()
+}
+
+fn parse_day(s: &str) -> Result<NaiveDate, String> {
+    NaiveDate::parse_from_str(s.trim(), "%Y-%m-%d")
+        .map_err(|_| format!("Fecha «{s}» no válida: usa AAAA-MM-DD, p. ej. 2026-11-30."))
 }
 
 /// Fecha UTC en ISO 8601 (sin dependencias externas).
@@ -315,19 +334,81 @@ fn crear_lista(state: &mut Value, args: &Value) -> R {
     let name = req_arg(args, "nombre")?.to_string();
     let n = lists(state).len();
     let color = match str_arg(args, "color") {
-        Some(c)
-            if c.starts_with('#')
-                && (4..=9).contains(&c.len())
-                && c[1..].chars().all(|ch| ch.is_ascii_hexdigit()) =>
-        {
-            c.to_string()
-        }
-        Some(c) => return Err(format!("Color «{c}» no válido; usa un hex como #30d158.")),
+        Some(c) => check_color(c)?,
         None => COLORS[n % COLORS.len()].to_string(),
     };
     let list = json!({ "id": uid(), "name": name, "color": color });
     state["lists"].as_array_mut().unwrap().push(list.clone());
     wrote(json!({ "id": list["id"], "nombre": list["name"], "color": list["color"] }))
+}
+
+fn check_color(c: &str) -> Result<String, String> {
+    if c.starts_with('#')
+        && (4..=9).contains(&c.len())
+        && c[1..].chars().all(|ch| ch.is_ascii_hexdigit())
+    {
+        Ok(c.to_string())
+    } else {
+        Err(format!("Color «{c}» no válido; usa un hex como #30d158."))
+    }
+}
+
+fn renombrar_lista(state: &mut Value, args: &Value) -> R {
+    let i = find_list(state, req_arg(args, "lista")?)?;
+    let name = str_arg(args, "nombre").map(String::from);
+    let color = str_arg(args, "color").map(check_color).transpose()?;
+    if name.is_none() && color.is_none() {
+        return Err("Indica un nombre nuevo, un color o ambos.".into());
+    }
+    let l = &mut state["lists"][i];
+    if let Some(name) = name {
+        l["name"] = json!(name);
+    }
+    if let Some(color) = color {
+        l["color"] = json!(color);
+    }
+    wrote(json!({ "id": l["id"], "nombre": l["name"], "color": l["color"] }))
+}
+
+fn mover_tarea(state: &mut Value, args: &Value) -> R {
+    let i = find_task(state, req_arg(args, "tarea")?)?;
+    let li = find_list(state, req_arg(args, "lista")?)?;
+    let list_id = lists(state)[li]["id"].as_str().unwrap_or("").to_string();
+    if tasks(state)[i]["listId"].as_str() == Some(&list_id) {
+        let view = task_view(state, &tasks(state)[i], false);
+        return read(view);
+    }
+    let order = next_order(state, &list_id);
+    let t = &mut tasks_mut(state)[i];
+    t["listId"] = json!(list_id);
+    t["order"] = json!(order);
+    let view = task_view(state, &tasks(state)[i], false);
+    wrote(view)
+}
+
+/// "" o null borra la fecha.
+fn due_arg(args: &Value, key: &str) -> Result<Value, String> {
+    match args[key].as_str().map(str::trim) {
+        None | Some("") => Ok(Value::Null),
+        Some(d) => Ok(json!(parse_day(d)?.to_string())),
+    }
+}
+
+fn asignar_vencimiento(state: &mut Value, args: &Value) -> R {
+    let i = find_task(state, req_arg(args, "tarea")?)?;
+    let due = due_arg(args, "fecha")?;
+    tasks_mut(state)[i]["due"] = due;
+    let view = task_view(state, &tasks(state)[i], false);
+    wrote(view)
+}
+
+fn next_order(state: &Value, list_id: &str) -> f64 {
+    tasks(state)
+        .iter()
+        .filter(|t| t["listId"].as_str() == Some(list_id))
+        .filter_map(|t| t["order"].as_f64())
+        .fold(-1.0, f64::max)
+        + 1.0
 }
 
 fn listar_tareas(state: &Value, args: &Value) -> R {
@@ -351,6 +432,7 @@ fn listar_tareas(state: &Value, args: &Value) -> R {
             ))
         }
     };
+    let until = str_arg(args, "vence_hasta").map(parse_day).transpose()?;
     let list_pos = |id: &str| {
         lists(state)
             .iter()
@@ -365,6 +447,14 @@ fn listar_tareas(state: &Value, args: &Value) -> R {
                 .map_or(true, |id| t["listId"].as_str() == Some(id))
         })
         .filter(|t| want_done.map_or(true, |d| t["done"].as_bool().unwrap_or(false) == d))
+        .filter(|t| {
+            until.map_or(true, |u| {
+                t["due"]
+                    .as_str()
+                    .and_then(|d| parse_day(d).ok())
+                    .is_some_and(|d| d <= u)
+            })
+        })
         .collect();
     ts.sort_by(|a, b| {
         let key = |t: &Value| {
@@ -424,12 +514,8 @@ fn crear_tarea(state: &mut Value, args: &Value) -> R {
     if !code.is_empty() {
         check_code_free(state, &code, None)?;
     }
-    let order = tasks(state)
-        .iter()
-        .filter(|t| t["listId"].as_str() == Some(&list_id))
-        .filter_map(|t| t["order"].as_f64())
-        .fold(-1.0, f64::max)
-        + 1.0;
+    let due = due_arg(args, "vencimiento")?;
+    let order = next_order(state, &list_id);
     let now = now_ms();
     let mut notes = Vec::new();
     if let Some(text) = str_arg(args, "nota_interna") {
@@ -442,6 +528,7 @@ fn crear_tarea(state: &mut Value, args: &Value) -> R {
         "code": code,
         "notes": "",
         "internalNotes": notes,
+        "due": due,
         "done": false,
         "createdAt": now,
         "doneAt": null,
@@ -583,12 +670,13 @@ pub fn tool_defs() -> Value {
         },
         {
             "name": "listar_tareas",
-            "description": "Lista tareas con su estado (concluida o pendiente), código, tiempo en foco, número de notas internas y si el usuario ha respondido.",
+            "description": "Lista tareas con su estado (concluida o pendiente), código, vencimiento (y si está vencida), tiempo en foco, número de notas internas y si el usuario ha respondido.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "lista": lista,
-                    "estado": { "type": "string", "enum": ["pendientes", "concluidas", "todas"], "description": "Filtro por estado. Por defecto, todas." }
+                    "estado": { "type": "string", "enum": ["pendientes", "concluidas", "todas"], "description": "Filtro por estado. Por defecto, todas." },
+                    "vence_hasta": { "type": "string", "description": "Solo tareas con vencimiento hasta esta fecha incluida (AAAA-MM-DD)." }
                 }
             },
             "annotations": ro,
@@ -608,9 +696,47 @@ pub fn tool_defs() -> Value {
                     "titulo": { "type": "string", "description": "Título de la tarea." },
                     "lista": { "type": "string", "description": "Id o nombre de la lista. Por defecto, la lista seleccionada en la app." },
                     "codigo": { "type": "string", "description": "Código interno único (p. ej. PRJ-142)." },
-                    "nota_interna": { "type": "string", "description": "Primera nota interna de la tarea." }
+                    "nota_interna": { "type": "string", "description": "Primera nota interna de la tarea." },
+                    "vencimiento": { "type": "string", "description": "Fecha de vencimiento AAAA-MM-DD (fecha local del usuario)." }
                 },
                 "required": ["titulo"]
+            },
+            "annotations": rw,
+        },
+        {
+            "name": "renombrar_lista",
+            "description": "Cambia el nombre y/o el color de una lista.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "lista": lista,
+                    "nombre": { "type": "string", "description": "Nombre nuevo." },
+                    "color": { "type": "string", "description": "Color hex nuevo (p. ej. #30d158)." }
+                },
+                "required": ["lista"]
+            },
+            "annotations": rw,
+        },
+        {
+            "name": "mover_tarea",
+            "description": "Mueve una tarea a otra lista (queda al final de esa lista).",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "tarea": tarea, "lista": lista },
+                "required": ["tarea", "lista"]
+            },
+            "annotations": rw,
+        },
+        {
+            "name": "asignar_vencimiento",
+            "description": "Asigna, cambia o quita (fecha vacía) la fecha de vencimiento de una tarea.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "tarea": tarea,
+                    "fecha": { "type": "string", "description": "AAAA-MM-DD (fecha local del usuario). Vacía para quitarla." }
+                },
+                "required": ["tarea", "fecha"]
             },
             "annotations": rw,
         },
@@ -720,6 +846,75 @@ mod tests {
         assert_eq!(s["active"]["taskId"], b["id"]);
         assert!(s["active"]["since"].is_i64());
         assert!(s["tasks"][0]["spentMs"].as_i64().unwrap() >= 5_000);
+    }
+
+    #[test]
+    fn listas_vencimientos_y_mover() {
+        let mut s = empty_state();
+        run(&mut s, "crear_lista", json!({ "nombre": "Trabajo" }));
+        let r = run(
+            &mut s,
+            "renombrar_lista",
+            json!({ "lista": "trabajo", "nombre": "Oficina", "color": "#30d158" }),
+        );
+        assert_eq!(r["nombre"], "Oficina");
+        assert_eq!(s["lists"][1]["color"], "#30d158");
+        assert!(call(&mut s, "renombrar_lista", &json!({ "lista": "Oficina" })).is_err());
+
+        let ayer = (today() - chrono::Days::new(1)).to_string();
+        let manana = (today() + chrono::Days::new(1)).to_string();
+        let t = run(
+            &mut s,
+            "crear_tarea",
+            json!({ "titulo": "A", "codigo": "A-1", "vencimiento": ayer }),
+        );
+        assert_eq!(t["vencida"], true);
+        assert_eq!(t["dias_para_vencer"], -1);
+        assert!(call(
+            &mut s,
+            "crear_tarea",
+            &json!({ "titulo": "B", "vencimiento": "30/11/2026" })
+        )
+        .is_err());
+        let t = run(
+            &mut s,
+            "asignar_vencimiento",
+            json!({ "tarea": "A-1", "fecha": manana }),
+        );
+        assert_eq!(t["vencida"], false);
+        assert_eq!(t["vencimiento"], json!(manana));
+        assert_eq!(
+            run(
+                &mut s,
+                "listar_tareas",
+                json!({ "vence_hasta": today().to_string() })
+            )
+            .as_array()
+            .unwrap()
+            .len(),
+            0
+        );
+        assert_eq!(
+            run(&mut s, "listar_tareas", json!({ "vence_hasta": manana }))
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        let t = run(
+            &mut s,
+            "asignar_vencimiento",
+            json!({ "tarea": "A-1", "fecha": "" }),
+        );
+        assert_eq!(t["vencimiento"], Value::Null);
+
+        let m = run(
+            &mut s,
+            "mover_tarea",
+            json!({ "tarea": "A-1", "lista": "Oficina" }),
+        );
+        assert_eq!(m["lista"], "Oficina");
+        assert_eq!(s["tasks"][0]["order"], 0.0);
     }
 
     #[test]
