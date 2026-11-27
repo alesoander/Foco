@@ -42,5 +42,5 @@ hl.on("hyprland.start", function()
 end)
 
 -- No pongas WEBKIT_DISABLE_DMABUF_RENDERER aquí: Foco lo desactiva solo con
--- NVIDIA (evita "Error 71"). Con AMD/Intel y WebKitGTK 2.54+ desactivarlo
--- deja la barra lateral negra y la ventana oscurecida.
+-- NVIDIA y WebKitGTK anterior a 2.54 (evita "Error 71"). Con WebKitGTK 2.54+
+-- desactivarlo deja la barra lateral negra y la ventana oscurecida.
