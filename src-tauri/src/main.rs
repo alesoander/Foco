@@ -402,12 +402,16 @@ fn main() {
         mcp::run();
         return;
     }
-    // El renderizador DMABUF de WebKitGTK provoca "Error 71 (Error de
-    // protocolo)" en Wayland con algunos drivers (sobre todo NVIDIA). Se
-    // desactiva antes de iniciar GTK, salvo que el usuario ya haya elegido
-    // un valor. Para una ventana tan sencilla no se nota la diferencia.
+    // Con el driver propietario de NVIDIA, el renderizador DMABUF de
+    // WebKitGTK provoca "Error 71 (Error de protocolo)" o la ventana en
+    // blanco, así que ahí se desactiva. En el resto (Mesa: AMD/Intel) se deja
+    // activado: desde WebKitGTK 2.54 el modo sin DMABUF pinta mal las
+    // ventanas transparentes (zonas negras y todo oscurecido). Un valor
+    // puesto por el usuario siempre se respeta.
     #[cfg(target_os = "linux")]
-    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none()
+        && std::path::Path::new("/sys/module/nvidia_drm").exists()
+    {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
     tauri::Builder::default()
