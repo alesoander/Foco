@@ -396,21 +396,33 @@ fn serve_mcp(app: &AppHandle, conn: std::os::unix::net::UnixStream) {
     let _ = (&conn).write_all(resp.as_bytes());
 }
 
+/// Versión de WebKitGTK con la que se ejecuta Foco (la de la biblioteca
+/// instalada, no la de compilación). Ya está enlazada por Tauri.
+#[cfg(target_os = "linux")]
+fn webkit_version() -> (u32, u32) {
+    extern "C" {
+        fn webkit_get_major_version() -> u32;
+        fn webkit_get_minor_version() -> u32;
+    }
+    unsafe { (webkit_get_major_version(), webkit_get_minor_version()) }
+}
+
 fn main() {
     // `foco --mcp`: servidor MCP por stdin/stdout, sin interfaz.
     if std::env::args().any(|a| a == "--mcp") {
         mcp::run();
         return;
     }
-    // Con el driver propietario de NVIDIA, el renderizador DMABUF de
-    // WebKitGTK provoca "Error 71 (Error de protocolo)" o la ventana en
-    // blanco, así que ahí se desactiva. En el resto (Mesa: AMD/Intel) se deja
+    // Con el driver propietario de NVIDIA y WebKitGTK anterior a 2.54, el
+    // renderizador DMABUF provoca "Error 71 (Error de protocolo)" o la
+    // ventana en blanco, así que ahí se desactiva. En el resto se deja
     // activado: desde WebKitGTK 2.54 el modo sin DMABUF pinta mal las
-    // ventanas transparentes (zonas negras y todo oscurecido). Un valor
-    // puesto por el usuario siempre se respeta.
+    // ventanas transparentes (barra lateral negra y todo oscurecido), también
+    // con NVIDIA. Un valor puesto por el usuario siempre se respeta.
     #[cfg(target_os = "linux")]
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none()
         && std::path::Path::new("/sys/module/nvidia_drm").exists()
+        && webkit_version() < (2, 54)
     {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }

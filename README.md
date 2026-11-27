@@ -163,8 +163,8 @@ Los datos se guardan en `~/.local/share/io.github.foco/state.json`.
 
 ## Problemas conocidos
 
-- **`Error 71 (Error de protocolo)`, pantalla en blanco o parpadeos con NVIDIA**: los causa el renderizador DMABUF de WebKitGTK. Si Foco detecta el driver propietario de NVIDIA, lo desactiva por su cuenta (`WEBKIT_DISABLE_DMABUF_RENDERER=1`). Si te pasa con otro driver, lanza `WEBKIT_DISABLE_DMABUF_RENDERER=1 foco`.
-- **Barra lateral negra y ventana oscurecida (WebKitGTK 2.54+)**: es el modo sin DMABUF, que pinta mal las ventanas transparentes. Foco ya no lo usa salvo con NVIDIA; si lo tienes forzado en tu configuración (por ejemplo `env = WEBKIT_DISABLE_DMABUF_RENDERER,1`), quítalo o lanza `WEBKIT_DISABLE_DMABUF_RENDERER=0 foco`.
+- **`Error 71 (Error de protocolo)`, pantalla en blanco o parpadeos con NVIDIA**: los causa el renderizador DMABUF de WebKitGTK en versiones anteriores a 2.54. Si Foco detecta el driver propietario de NVIDIA y un WebKitGTK anterior a 2.54, lo desactiva por su cuenta (`WEBKIT_DISABLE_DMABUF_RENDERER=1`). Si te pasa en otro caso, lanza `WEBKIT_DISABLE_DMABUF_RENDERER=1 foco`.
+- **Barra lateral negra y ventana oscurecida (WebKitGTK 2.54+)**: es el modo sin DMABUF, que pinta mal las ventanas transparentes, también con NVIDIA. Foco ya no lo usa con esas versiones; si lo tienes forzado en tu configuración (por ejemplo `env = WEBKIT_DISABLE_DMABUF_RENDERER,1`), quítalo o lanza `WEBKIT_DISABLE_DMABUF_RENDERER=0 foco`.
 - **El widget no queda encima**: faltan las reglas del compositor (ver arriba). Otra opción es forzar XWayland con `GDK_BACKEND=x11 foco`; ahí *always‑on‑top* funciona sin reglas, pero el escalado HiDPI puede verse peor.
 - **Hyprland no tiene "minimizar"**: por eso existen el botón amarillo, el atajo `--toggle` y el modo automático al cambiar de ventana.
 
